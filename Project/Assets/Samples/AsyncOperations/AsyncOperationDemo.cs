@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Cysharp.Threading.Tasks;
 using UnityEngine;
 using UnityCoreLab.AsyncOperations;
 
@@ -19,6 +20,10 @@ namespace UnityCoreLab.Samples.AsyncOperations
         private GUIStyle _titleStyle;
         private GUIStyle _labelStyle;
         private GUIStyle _buttonStyle;
+        private UniTaskLifecycleOwner _uniTaskOwner;
+        private OperationState _uniTaskState = OperationState.Idle;
+        private string _uniTaskMessage = "Not started";
+        private Vector2 _scrollPosition;
 
         public bool IsInitialized =>
             _coordinator != null && _stateRenderer != null && _worldStatus != null;
@@ -98,8 +103,9 @@ namespace UnityCoreLab.Samples.AsyncOperations
             GUILayout.BeginArea(
                 new Rect(16f, 16f, panelWidth, panelHeight),
                 GUI.skin.window);
+            _scrollPosition = GUILayout.BeginScrollView(_scrollPosition);
             GUILayout.Label("Unity Core Lab", _titleStyle);
-            GUILayout.Label("Async Operation Lifecycle", _labelStyle);
+            GUILayout.Label("01.1 Task operation lifecycle", _labelStyle);
             GUILayout.Space(8);
             GUILayout.Label($"Version: {_coordinator.Current.Version}", _labelStyle);
             GUILayout.Label($"State: {_coordinator.Current.State}", _labelStyle);
@@ -150,6 +156,31 @@ namespace UnityCoreLab.Samples.AsyncOperations
                 _coordinator.CancelActive();
             }
 
+            GUILayout.Space(18);
+            GUILayout.Label("01.2 UniTask / Unity lifecycle", _labelStyle);
+            GUILayout.Label($"UniTask state: {_uniTaskState}", _labelStyle);
+            GUILayout.Label(_uniTaskMessage, _labelStyle);
+
+            if (GUILayout.Button("Run UniTask PlayerLoop delay (5 seconds)", _buttonStyle))
+            {
+                StartUniTaskDelaySample();
+            }
+
+            if (GUILayout.Button("Run UniTask delay with 1 second timeout", _buttonStyle))
+            {
+                StartUniTaskTimeoutSample();
+            }
+
+            if (GUILayout.Button("Destroy UniTask owner and cancel its work", _buttonStyle))
+            {
+                DestroyUniTaskOwner();
+            }
+
+            if (GUILayout.Button("Run UniTask exception with Forget handler", _buttonStyle))
+            {
+                StartUniTaskFaultSample();
+            }
+
             GUILayout.Space(16);
             GUILayout.Label("Recent state changes", _labelStyle);
             foreach (string message in _logs)
@@ -157,22 +188,132 @@ namespace UnityCoreLab.Samples.AsyncOperations
                 GUILayout.Label(message, _labelStyle);
             }
 
+            GUILayout.EndScrollView();
             GUILayout.EndArea();
             GUI.matrix = previousMatrix;
         }
 
+        private void StartUniTaskDelaySample()
+        {
+            UniTaskLifecycleOwner owner = EnsureUniTaskOwner();
+            _uniTaskState = OperationState.Running;
+            _uniTaskMessage =
+                $"Started on thread {Environment.CurrentManagedThreadId}; destroy the owner to cancel.";
+
+            RunUniTaskDelayAndReportAsync(owner).Forget(HandleUniTaskException);
+        }
+
+        private async UniTask RunUniTaskDelayAndReportAsync(
+            UniTaskLifecycleOwner owner)
+        {
+            OperationResult result = await owner.RunDelayAsync(TimeSpan.FromSeconds(5));
+            if (this == null)
+            {
+                return;
+            }
+
+            _uniTaskState = result.State;
+            _uniTaskMessage =
+                $"{result.State}; start thread {owner.StartedThreadId}, " +
+                $"continuation thread {owner.ContinuationThreadId}.";
+            RecordLog($"UniTask owner | {result.State}");
+        }
+
+        private void StartUniTaskTimeoutSample()
+        {
+            UniTaskLifecycleOwner owner = EnsureUniTaskOwner();
+            _uniTaskState = OperationState.Running;
+            _uniTaskMessage = "Started 5 second delay with 1 second PlayerLoop timeout.";
+
+            RunUniTaskTimeoutAndReportAsync(owner).Forget(HandleUniTaskException);
+        }
+
+        private async UniTask RunUniTaskTimeoutAndReportAsync(
+            UniTaskLifecycleOwner owner)
+        {
+            OperationResult result = await owner.RunDelayWithTimeoutAsync(
+                TimeSpan.FromSeconds(5),
+                TimeSpan.FromSeconds(1));
+            if (this == null)
+            {
+                return;
+            }
+
+            _uniTaskState = result.State;
+            _uniTaskMessage =
+                $"{result.State}; timeout and delay both run on the Unity PlayerLoop.";
+            RecordLog($"UniTask timeout | {result.State}");
+        }
+
+        private void DestroyUniTaskOwner()
+        {
+            if (_uniTaskOwner == null)
+            {
+                _uniTaskMessage = "No active UniTask owner. Start the delay first.";
+                return;
+            }
+
+            Destroy(_uniTaskOwner.gameObject);
+            _uniTaskOwner = null;
+            _uniTaskMessage = "Destroy scheduled; lifetime token will be cancelled.";
+        }
+
+        private void StartUniTaskFaultSample()
+        {
+            _uniTaskState = OperationState.Running;
+            _uniTaskMessage = "Fault scheduled through Forget(exceptionHandler).";
+            EnsureUniTaskOwner().RunFaultAndForget(HandleUniTaskException);
+        }
+
+        private void HandleUniTaskException(Exception exception)
+        {
+            if (this == null)
+            {
+                return;
+            }
+
+            if (exception is OperationCanceledException)
+            {
+                _uniTaskState = OperationState.Cancelled;
+                _uniTaskMessage = "Fire-and-forget work was cancelled.";
+                RecordLog("UniTask owner | Cancelled");
+                return;
+            }
+
+            _uniTaskState = OperationState.Failed;
+            _uniTaskMessage = exception.Message;
+            RecordLog($"UniTask owner | Failed | {exception.Message}");
+        }
+
+        private UniTaskLifecycleOwner EnsureUniTaskOwner()
+        {
+            if (_uniTaskOwner != null)
+            {
+                return _uniTaskOwner;
+            }
+
+            var ownerObject = new GameObject("UniTask Lifetime Owner");
+            ownerObject.transform.SetParent(transform, false);
+            _uniTaskOwner = ownerObject.AddComponent<UniTaskLifecycleOwner>();
+            return _uniTaskOwner;
+        }
+
         private void OnStateChanged(OperationSnapshot snapshot)
         {
-            _logs.Insert(
-                0,
+            RecordLog(
                 $"v{snapshot.Version} | {snapshot.State} | {snapshot.Elapsed.TotalMilliseconds:F0} ms");
+
+            ApplyVisualState(snapshot);
+        }
+
+        private void RecordLog(string message)
+        {
+            _logs.Insert(0, message);
 
             if (_logs.Count > 12)
             {
                 _logs.RemoveAt(_logs.Count - 1);
             }
-
-            ApplyVisualState(snapshot);
         }
 
         private void CreateWorldVisualization()

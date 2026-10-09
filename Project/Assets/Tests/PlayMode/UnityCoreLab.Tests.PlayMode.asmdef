@@ -3,7 +3,8 @@
   "rootNamespace": "UnityCoreLab.Tests.PlayMode",
   "references": [
     "UnityCoreLab.Runtime",
-    "UnityCoreLab.Samples"
+    "UnityCoreLab.Samples",
+    "UniTask"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

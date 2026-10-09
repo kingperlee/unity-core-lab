@@ -2,7 +2,8 @@
   "name": "UnityCoreLab.Samples",
   "rootNamespace": "UnityCoreLab.Samples",
   "references": [
-    "UnityCoreLab.Runtime"
+    "UnityCoreLab.Runtime",
+    "UniTask"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

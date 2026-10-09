@@ -9,6 +9,7 @@ This repository is a personal Unity engineering portfolio for technical demonstr
 - Unity 2022.3.62f1
 - Universal Render Pipeline 14.0.12
 - Unity Test Framework 1.1.33
+- UniTask 2.5.11
 
 The Unity project is located in the `Project` directory.
 
@@ -16,7 +17,7 @@ The Unity project is located in the `Project` directory.
 
 ### 01 Async Operation Lifecycle
 
-Demonstrates cancellation, timeout classification, exception normalization, observable lifecycle state, and generation-based protection against stale asynchronous completions.
+Demonstrates cancellation, timeout classification, exception normalization, observable lifecycle state, generation-based protection against stale asynchronous completions, and a Task/UniTask comparison tied to Unity's PlayerLoop and GameObject lifetime.
 
 - Runtime code: `Project/Assets/Runtime/AsyncOperations`
 - Interactive sample: `Project/Assets/Samples/AsyncOperations`

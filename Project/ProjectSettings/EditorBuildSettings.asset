@@ -4,5 +4,8 @@
 EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
-  m_Scenes: []
+  m_Scenes:
+  - enabled: 1
+    path: Assets/Samples/AsyncOperations/AsyncOperationDemo.unity
+    guid: 42f29e070f83bfa49b7781d926a7edb9
   m_configObjects: {}

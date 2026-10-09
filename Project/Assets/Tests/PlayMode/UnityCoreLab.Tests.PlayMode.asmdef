@@ -1,0 +1,22 @@
+{
+  "name": "UnityCoreLab.Tests.PlayMode",
+  "rootNamespace": "UnityCoreLab.Tests.PlayMode",
+  "references": [
+    "UnityCoreLab.Runtime",
+    "UnityCoreLab.Samples"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": false,
+  "defineConstraints": [
+    "UNITY_INCLUDE_TESTS"
+  ],
+  "versionDefines": [],
+  "noEngineReferences": false,
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ]
+}

@@ -37,9 +37,20 @@ Demonstrates explicit asset ownership through disposable leases, synchronous and
 - PlayMode tests: `Project/Assets/Tests/PlayMode/UniTaskAssetLifecyclePlayModeTests.cs`
 - Design note: `docs/02-asset-handle-lifecycle.md`
 
+### 03 Object Pooling and Allocation Analysis
+
+Studies pooling as an explicit ownership and capacity policy. The first baseline
+implements prewarming, reference-identity return validation, bounded inactive
+retention, overflow discard, failure cleanup, and observable reuse statistics.
+
+- Runtime code: `Project/Assets/Runtime/ObjectPooling`
+- EditMode tests: `Project/Assets/Tests/EditMode/ObjectPooling`
+- Design note: `docs/03-object-pooling-allocation.md`
+
 ## Roadmap
 
-- Object pooling and allocation analysis
+- GameObject pooling and reset lifecycle
+- Allocation measurement and pooling comparison
 - Rendering performance comparisons
 - Runtime diagnostics and fault injection
 

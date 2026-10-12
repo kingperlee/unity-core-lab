@@ -137,3 +137,24 @@ screen shows that:
 
 Run `ResourcesAssetLifecyclePlayModeTests` to exercise the real Resources provider
 and the complete interactive-demo ownership flow.
+
+## 02.5 Addressables handles versus consumer leases
+
+Addressables adds another ownership layer: every successful load returns an
+`AsyncOperationHandle<TAsset>` that must later be released. The provider keeps that
+handle separate from the store's consumer reference count:
+
+- concurrent same-key callers still create one provider request and one handle;
+- each successful caller receives its own store lease;
+- releasing an intermediate lease does not release the Addressables handle;
+- releasing the final lease calls `Addressables.Release(handle)` exactly once;
+- failed or cancelled loads release their handle before propagating the result;
+- a failed entry is removed, so the next acquire can create a fresh handle.
+
+The adapter releases the handle rather than calling `Addressables.Release(asset)`.
+Keeping the exact handle makes ownership explicit and avoids losing the operation
+that represents downloaded bundles and dependency references.
+
+`AddressablesAssetProviderPlayModeTests` uses completed ResourceManager operations
+to test success, failure, retry, and exact release counts without requiring a remote
+catalog or an Addressables content build.

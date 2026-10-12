@@ -3,7 +3,10 @@
   "rootNamespace": "UnityCoreLab.Samples",
   "references": [
     "UnityCoreLab.Runtime",
-    "UniTask"
+    "UniTask",
+    "UniTask.Addressables",
+    "Unity.Addressables",
+    "Unity.ResourceManager"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

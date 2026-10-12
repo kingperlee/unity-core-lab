@@ -4,7 +4,9 @@
   "references": [
     "UnityCoreLab.Runtime",
     "UnityCoreLab.Samples",
-    "UniTask"
+    "UniTask",
+    "Unity.Addressables",
+    "Unity.ResourceManager"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

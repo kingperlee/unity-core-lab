@@ -10,6 +10,7 @@ This repository is a personal Unity engineering portfolio for technical demonstr
 - Universal Render Pipeline 14.0.12
 - Unity Test Framework 1.1.33
 - UniTask 2.5.11
+- Addressables 1.21.12
 
 The Unity project is located in the `Project` directory.
 
@@ -27,7 +28,7 @@ Demonstrates cancellation, timeout classification, exception normalization, obse
 
 ### 02 Asset Handle Lifecycle and Ownership
 
-Demonstrates explicit asset ownership through disposable leases, synchronous and asynchronous load deduplication by key, independent waiter cancellation, reference counting, deterministic last-owner unload, failure recovery, UniTask/PlayerLoop adaptation, GameObject-lifetime ownership, and a real `Resources.LoadAsync` integration.
+Demonstrates explicit asset ownership through disposable leases, synchronous and asynchronous load deduplication by key, independent waiter cancellation, reference counting, deterministic last-owner unload, failure recovery, UniTask/PlayerLoop adaptation, GameObject-lifetime ownership, and Resources/Addressables provider integration.
 
 - Runtime code: `Project/Assets/Runtime/AssetLifecycle`
 - UniTask integration: `Project/Assets/Samples/AssetLifecycle`
@@ -38,7 +39,6 @@ Demonstrates explicit asset ownership through disposable leases, synchronous and
 
 ## Roadmap
 
-- Addressables ownership adapter and handle-release comparison
 - Object pooling and allocation analysis
 - Rendering performance comparisons
 - Runtime diagnostics and fault injection

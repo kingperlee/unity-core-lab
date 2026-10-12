@@ -57,6 +57,34 @@ The store uses standard `Task` rather than UniTask because this ownership layer 
 no Unity PlayerLoop dependency. A Unity-facing provider may still use UniTask or a
 framework-native handle internally and adapt its completion to this boundary.
 
+## 02.3 UniTask and Unity lifetime integration
+
+The UniTask layer lives in `Samples/AssetLifecycle`; it does not duplicate the
+reference-counting state machine:
+
+- `UniTaskAssetProviderAdapter<TAsset>` converts a Unity-facing UniTask provider to
+  the Task-based core contract;
+- provider loads enter and complete through a selected `PlayerLoopTiming`;
+- a release triggered from a worker thread is posted back to Unity's PlayerLoop;
+- `AcquireUniTaskAsync` exposes a UniTask caller boundary and explicitly switches
+  back to the Unity main thread;
+- `AcquireForOwnerAsync` links one waiter's cancellation to a GameObject lifetime;
+- `AssetLeaseScope` releases successfully acquired leases during `OnDestroy`.
+
+Destroying one owner cancels only that owner's wait. It does not cancel the shared
+provider request while another waiter still needs the same key. Once acquisition
+succeeds, the scope owns the lease, although callers may still dispose it early
+because lease disposal is idempotent.
+
+Task-to-UniTask conversion is intentionally limited to this integration boundary.
+The core remains reusable and testable without a Unity PlayerLoop dependency.
+
+The PlayMode cancellation test calls `SuppressCancellationThrow()` before converting
+its UniTask to a `Task`. This keeps cancellation as an explicit `(IsCanceled,
+Result)` value at the test boundary. Production UniTask code can instead await the
+operation directly and catch `OperationCanceledException` when cancellation is part
+of its control flow.
+
 ## Scope and next integration
 
 The synchronous store remains intentionally single-threaded. The asynchronous store
@@ -67,9 +95,9 @@ The provider abstraction also keeps the core independent from `Resources`,
 Addressables, AssetBundles, or a proprietary asset framework. A later Unity-facing
 adapter can choose one of those mechanisms without changing the lease rules.
 Provider implementations must also marshal Unity API calls to the main thread when
-needed because load completion and release may be observed from any thread. The next
-increment will add UniTask and Unity-lifecycle integration before the interactive
-ownership demo.
+needed because load completion and release may be observed from any thread. The
+UniTask adapter demonstrates that policy. A later increment can bind the provider
+interface to Resources or Addressables and add an interactive ownership demo.
 
 ## Run the tests
 
@@ -81,3 +109,8 @@ The tests verify shared loads, reference counts, last-owner unload, idempotent l
 release, independent keys, failed loads, store-wide cleanup, async request
 coalescing, independent waiter cancellation, late-result and late-failure cleanup,
 retry, API boundary validation, and aggregate disposal failure handling.
+
+Select PlayMode and run `UniTaskAssetLifecyclePlayModeTests` to verify that provider
+calls execute on the main thread, GameObject destruction cancels only its waiter,
+acquired leases are released with their owner, and worker-thread releases are
+deferred to Unity's PlayerLoop.

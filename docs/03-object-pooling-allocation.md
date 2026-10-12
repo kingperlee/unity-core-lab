@@ -46,12 +46,43 @@ These values make later allocation comparisons explainable. A lower allocation
 count is useful only when it can be related to reuse, capacity, and retained
 memory.
 
+## 03.2 GameObject adapter and reset lifecycle
+
+`GameObjectPool` keeps Unity-specific behavior outside the reusable C# pool. It
+captures the thread that constructs it and rejects operations from other
+threads before they can call Unity APIs. A rented object is moved beneath the
+active root, reset to a known local transform, activated, and then notified
+through `IPoolableGameObject.OnRentFromPool`.
+
+Returning reverses that transition in a deliberate order:
+
+1. components receive `OnReturnToPool` while the object is still active;
+2. the object is deactivated and moved beneath the inactive root;
+3. local position, rotation, and scale are restored;
+4. the core pool either retains it or destroys it when capacity is full.
+
+Reset callbacks are discovered once when an instance is created and cached for
+later transitions. The hot rent/return path therefore avoids repeated
+`GetComponentsInChildren` calls. The contract still requires each component to
+clear its own transient state, such as velocity, timers, targets, subscriptions,
+and particle state.
+
+The interactive demo prewarms four cubes. Spawning six makes the difference
+between active peak and inactive capacity visible: returning all six retains
+four and discards two. A second burst then demonstrates reuse with live pool
+statistics.
+
+Open `Project/Assets/Samples/ObjectPooling/ObjectPoolingDemo.unity` to run the
+sample. Run the `UnityCoreLab.Tests.PlayMode.ObjectPooling` namespace to verify
+hierarchy and state reset, overflow destruction, main-thread enforcement, and
+the complete demo cycle.
+
 ## Scope and next increment
 
-This baseline is intentionally single-threaded. Unity objects must be created,
+Both layers are intentionally single-threaded. Unity objects must be created,
 activated, reset, and destroyed on the Unity main thread. The next increment
-will adapt this policy to `GameObject`, define a reusable component reset
-contract, and add a PlayMode demonstration before measuring allocations.
+will compare instantiate/destroy against rent/return with measurable allocation
+and frame-time samples instead of claiming that pooling is always faster.
 
 Run the `UnityCoreLab.Tests.EditMode.ObjectPooling` namespace in Test Runner to
 verify prewarming, reuse, overflow, duplicate-return protection, callback

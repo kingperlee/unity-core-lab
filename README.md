@@ -39,17 +39,21 @@ Demonstrates explicit asset ownership through disposable leases, synchronous and
 
 ### 03 Object Pooling and Allocation Analysis
 
-Studies pooling as an explicit ownership and capacity policy. The first baseline
-implements prewarming, reference-identity return validation, bounded inactive
-retention, overflow discard, failure cleanup, and observable reuse statistics.
+Studies pooling as an explicit ownership and capacity policy. The pure C#
+baseline implements prewarming, reference-identity return validation, bounded
+inactive retention, overflow discard, failure cleanup, and observable reuse
+statistics. The Unity adapter adds main-thread enforcement, hierarchy and
+transform reset, component lifecycle hooks, and a visible GameObject demo.
 
 - Runtime code: `Project/Assets/Runtime/ObjectPooling`
+- Unity integration: `Project/Assets/Samples/ObjectPooling`
+- Interactive scene: `Project/Assets/Samples/ObjectPooling/ObjectPoolingDemo.unity`
 - EditMode tests: `Project/Assets/Tests/EditMode/ObjectPooling`
+- PlayMode tests: `Project/Assets/Tests/PlayMode/ObjectPooling`
 - Design note: `docs/03-object-pooling-allocation.md`
 
 ## Roadmap
 
-- GameObject pooling and reset lifecycle
 - Allocation measurement and pooling comparison
 - Rendering performance comparisons
 - Runtime diagnostics and fault injection

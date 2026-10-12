@@ -55,9 +55,21 @@ markers without encoding a fragile "pooling must win" test assertion.
 - PlayMode tests: `Project/Assets/Tests/PlayMode/ObjectPooling`
 - Design note: `docs/03-object-pooling-allocation.md`
 
+### 04 Rendering Performance and Submission Analysis
+
+Builds equivalent rendering workloads with unique materials, shared material
+plus MaterialPropertyBlock, and explicit GPU instancing. The demo separates
+deterministic scene-structure counts from frame-wide Profiler counters and
+exposes Unity's 1023-matrix instanced draw boundary for Frame Debugger analysis.
+
+- Rendering sample: `Project/Assets/Samples/RenderingPerformance`
+- Interactive scene: `Project/Assets/Samples/RenderingPerformance/RenderingPerformanceDemo.unity`
+- PlayMode tests: `Project/Assets/Tests/PlayMode/RenderingPerformance`
+- Design note: `docs/04-rendering-performance.md`
+
 ## Roadmap
 
-- Rendering performance comparisons
+- Frame Debugger case studies and overdraw comparison
 - Runtime diagnostics and fault injection
 
 Copyright © 2026 Jiangbo Li. All rights reserved.

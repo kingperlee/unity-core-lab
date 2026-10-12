@@ -27,7 +27,7 @@ Demonstrates cancellation, timeout classification, exception normalization, obse
 
 ### 02 Asset Handle Lifecycle and Ownership
 
-Demonstrates explicit asset ownership through disposable leases, load deduplication by key, reference counting, deterministic last-owner unload, and store-wide shutdown cleanup.
+Demonstrates explicit asset ownership through disposable leases, synchronous and asynchronous load deduplication by key, independent waiter cancellation, reference counting, deterministic last-owner unload, failure recovery, and store-wide shutdown cleanup.
 
 - Runtime code: `Project/Assets/Runtime/AssetLifecycle`
 - EditMode tests: `Project/Assets/Tests/EditMode/AssetLifecycle`
@@ -35,7 +35,6 @@ Demonstrates explicit asset ownership through disposable leases, load deduplicat
 
 ## Roadmap
 
-- Async asset-load coalescing and waiter cancellation
 - Unity asset-provider integration and an interactive ownership sample
 - Object pooling and allocation analysis
 - Rendering performance comparisons

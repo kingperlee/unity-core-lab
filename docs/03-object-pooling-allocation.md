@@ -77,12 +77,39 @@ sample. Run the `UnityCoreLab.Tests.PlayMode.ObjectPooling` namespace to verify
 hierarchy and state reset, overflow destruction, main-thread enforcement, and
 the complete demo cycle.
 
+## 03.3 Matched allocation and timing comparison
+
+`ObjectPoolComparisonRunner` performs the same number of lifecycle operations
+with two strategies:
+
+- instantiate every object and schedule every object for destruction;
+- rent prewarmed objects and return every object to a capacity-matched pool.
+
+Both paths operate on the same template and reuse a preallocated reference
+array. Warm-up work is excluded, each Instantiate/Destroy sample is followed by
+a frame so Unity can process deferred destruction, and results use the median
+instead of a single frame. Elapsed time comes from `Stopwatch` and managed
+allocation comes from `GC.GetAllocatedBytesForCurrentThread` around only the
+matched workload.
+
+The runner also emits these custom Profiler markers:
+
+- `UnityCoreLab.ObjectPooling.InstantiateDestroy`
+- `UnityCoreLab.ObjectPooling.RentReturn`
+
+The UI deliberately labels Editor results as provisional. Editor extensions,
+deep profiling, development instrumentation, target hardware, and the actual
+component reset workload can all change the result. The PlayMode test verifies
+equal operation counts and observable reuse; it does not assert that one timing
+must always be lower than the other.
+
 ## Scope and next increment
 
 Both layers are intentionally single-threaded. Unity objects must be created,
-activated, reset, and destroyed on the Unity main thread. The next increment
-will compare instantiate/destroy against rent/return with measurable allocation
-and frame-time samples instead of claiming that pooling is always faster.
+activated, reset, and destroyed on the Unity main thread. A later performance
+increment can export target-device samples or add automated budget thresholds;
+those thresholds should be platform-specific rather than copied from Editor
+measurements.
 
 Run the `UnityCoreLab.Tests.EditMode.ObjectPooling` namespace in Test Runner to
 verify prewarming, reuse, overflow, duplicate-return protection, callback

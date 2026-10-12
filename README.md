@@ -43,7 +43,10 @@ Studies pooling as an explicit ownership and capacity policy. The pure C#
 baseline implements prewarming, reference-identity return validation, bounded
 inactive retention, overflow discard, failure cleanup, and observable reuse
 statistics. The Unity adapter adds main-thread enforcement, hierarchy and
-transform reset, component lifecycle hooks, and a visible GameObject demo.
+transform reset, component lifecycle hooks, and a visible GameObject demo. A
+matched-workload runner compares Instantiate/Destroy with Rent/Return using
+median elapsed time, current-thread managed allocation, and custom Profiler
+markers without encoding a fragile "pooling must win" test assertion.
 
 - Runtime code: `Project/Assets/Runtime/ObjectPooling`
 - Unity integration: `Project/Assets/Samples/ObjectPooling`
@@ -54,7 +57,6 @@ transform reset, component lifecycle hooks, and a visible GameObject demo.
 
 ## Roadmap
 
-- Allocation measurement and pooling comparison
 - Rendering performance comparisons
 - Runtime diagnostics and fault injection
 

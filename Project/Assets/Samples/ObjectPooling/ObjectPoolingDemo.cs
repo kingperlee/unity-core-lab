@@ -21,6 +21,7 @@ namespace UnityCoreLab.Samples.ObjectPooling
         private GameObject _template;
         private GameObject _ownedCamera;
         private Material _material;
+        private ObjectPoolComparisonRunner _comparisonRunner;
         private GUIStyle _titleStyle;
         private GUIStyle _labelStyle;
         private GUIStyle _buttonStyle;
@@ -56,6 +57,12 @@ namespace UnityCoreLab.Samples.ObjectPooling
                 inactiveRoot,
                 RetainedCapacity);
             _pool.Prewarm(PrewarmCount);
+            _comparisonRunner = GetComponent<ObjectPoolComparisonRunner>();
+            if (_comparisonRunner == null)
+            {
+                _comparisonRunner = gameObject.AddComponent<ObjectPoolComparisonRunner>();
+            }
+
             EnsureCamera();
         }
 
@@ -201,7 +208,7 @@ namespace UnityCoreLab.Samples.ObjectPooling
             _scrollPosition = GUILayout.BeginScrollView(_scrollPosition);
 
             GUILayout.Label("Unity Core Lab", _titleStyle);
-            GUILayout.Label("03.2 GameObject pool lifecycle", _labelStyle);
+            GUILayout.Label("03.2 / 03.3 Pool lifecycle and measurement", _labelStyle);
             GUILayout.Space(8f);
             GUILayout.Label($"Active rentals: {ActiveCount}", _labelStyle);
             GUILayout.Label($"Available / capacity: {AvailableCount} / {RetainedCapacity}", _labelStyle);
@@ -232,6 +239,22 @@ namespace UnityCoreLab.Samples.ObjectPooling
             }
 
             GUILayout.Space(12f);
+            GUI.enabled = !_comparisonRunner.IsRunning;
+            if (GUILayout.Button(
+                    "Run Instantiate/Destroy vs Rent/Return",
+                    _buttonStyle))
+            {
+                StartCoroutine(_comparisonRunner.RunComparison());
+            }
+
+            GUI.enabled = true;
+            GUILayout.Label($"Comparison: {_comparisonRunner.Status}", _labelStyle);
+            if (_comparisonRunner.HasResult)
+            {
+                DrawComparisonResult(_comparisonRunner.LastResult);
+            }
+
+            GUILayout.Space(12f);
             GUILayout.Label(
                 "Try: Spawn burst, Return all, then Spawn burst again. " +
                 "Only four inactive objects are retained; the rest are discarded.",
@@ -240,6 +263,32 @@ namespace UnityCoreLab.Samples.ObjectPooling
             GUILayout.EndScrollView();
             GUILayout.EndArea();
             GUI.matrix = previousMatrix;
+        }
+
+        private void DrawComparisonResult(ObjectPoolComparisonResult result)
+        {
+            ObjectPoolPerformanceSample baseline = result.InstantiateDestroy;
+            ObjectPoolPerformanceSample pooled = result.RentReturn;
+            GUILayout.Label(
+                $"{baseline.Scenario}: {baseline.MicrosecondsPerOperation:F2} us/op, " +
+                $"{baseline.ManagedBytesPerOperation:F2} managed B/op",
+                _labelStyle);
+            GUILayout.Label(
+                $"{pooled.Scenario}: {pooled.MicrosecondsPerOperation:F2} us/op, " +
+                $"{pooled.ManagedBytesPerOperation:F2} managed B/op",
+                _labelStyle);
+            GUILayout.Label(
+                $"Measured median of {baseline.SampleCount} samples, " +
+                $"{baseline.OperationsPerSample} operations per sample.",
+                _labelStyle);
+
+            if (result.MeasuredInEditor)
+            {
+                GUILayout.Label(
+                    "Editor result: use a Development Build and Unity Profiler " +
+                    "before treating these numbers as evidence for a target device.",
+                    _labelStyle);
+            }
         }
 
         private void EnsureGuiStyles()

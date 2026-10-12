@@ -1,0 +1,5 @@
+{
+  "id": "shared-profile",
+  "displayName": "Unity Core Lab Shared Resource",
+  "purpose": "Demonstrates one load shared by multiple ownership leases."
+}

@@ -114,3 +114,26 @@ Select PlayMode and run `UniTaskAssetLifecyclePlayModeTests` to verify that prov
 calls execute on the main thread, GameObject destruction cancels only its waiter,
 acquired leases are released with their owner, and worker-thread releases are
 deferred to Unity's PlayerLoop.
+
+## 02.4 Resources provider and interactive ownership demo
+
+`ResourcesUniTaskAssetProvider<TAsset>` is the first real Unity asset API adapter.
+It loads non-GameObject assets with `Resources.LoadAsync<TAsset>` and releases them
+with `Resources.UnloadAsset` after the last lease ends.
+
+A `ResourceRequest` cannot actually be cancelled. Cancelling only the UniTask await
+would discard the eventual asset and prevent deterministic cleanup. The provider
+therefore finishes the Unity request, unloads a late result when the store lifetime
+has been cancelled, and only then reports cancellation to the core.
+
+Open `Assets/Samples/AssetLifecycle/AssetLifecycleDemo.unity` and enter Play Mode.
+The demo lets two GameObject owners request the same `TextAsset` concurrently. The
+screen shows that:
+
+1. two waiters create one underlying Resources load;
+2. successful waiters produce two independent leases;
+3. releasing or destroying one owner leaves the asset loaded;
+4. destroying the final owner triggers exactly one unload.
+
+Run `ResourcesAssetLifecyclePlayModeTests` to exercise the real Resources provider
+and the complete interactive-demo ownership flow.

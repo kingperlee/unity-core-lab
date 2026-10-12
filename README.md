@@ -27,17 +27,18 @@ Demonstrates cancellation, timeout classification, exception normalization, obse
 
 ### 02 Asset Handle Lifecycle and Ownership
 
-Demonstrates explicit asset ownership through disposable leases, synchronous and asynchronous load deduplication by key, independent waiter cancellation, reference counting, deterministic last-owner unload, failure recovery, UniTask/PlayerLoop adaptation, and GameObject-lifetime ownership.
+Demonstrates explicit asset ownership through disposable leases, synchronous and asynchronous load deduplication by key, independent waiter cancellation, reference counting, deterministic last-owner unload, failure recovery, UniTask/PlayerLoop adaptation, GameObject-lifetime ownership, and a real `Resources.LoadAsync` integration.
 
 - Runtime code: `Project/Assets/Runtime/AssetLifecycle`
 - UniTask integration: `Project/Assets/Samples/AssetLifecycle`
+- Interactive scene: `Project/Assets/Samples/AssetLifecycle/AssetLifecycleDemo.unity`
 - EditMode tests: `Project/Assets/Tests/EditMode/AssetLifecycle`
 - PlayMode tests: `Project/Assets/Tests/PlayMode/UniTaskAssetLifecyclePlayModeTests.cs`
 - Design note: `docs/02-asset-handle-lifecycle.md`
 
 ## Roadmap
 
-- Resources or Addressables integration and an interactive ownership sample
+- Addressables ownership adapter and handle-release comparison
 - Object pooling and allocation analysis
 - Rendering performance comparisons
 - Runtime diagnostics and fault injection

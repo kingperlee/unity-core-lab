@@ -17,7 +17,7 @@ The Unity project is located in the `Project` directory.
 
 ### 01 Async Operation Lifecycle
 
-Demonstrates cancellation, timeout classification, exception normalization, observable lifecycle state, generation-based protection against stale asynchronous completions, and a Task/UniTask comparison tied to Unity's PlayerLoop and GameObject lifetime.
+Demonstrates cancellation, timeout classification, exception normalization, observable lifecycle state, generation-based protection against stale asynchronous completions, Task/UniTask lifecycle differences, and safe worker-thread-to-main-thread handoff.
 
 - Runtime code: `Project/Assets/Runtime/AsyncOperations`
 - Interactive sample: `Project/Assets/Samples/AsyncOperations`

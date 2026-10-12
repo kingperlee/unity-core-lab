@@ -46,6 +46,23 @@ For high-frequency cancellation paths, `SuppressCancellationThrow()` can return 
 
 The timeout sample uses `CancelAfterSlim` rather than UniTask's `.Timeout()` wrapper. The cancellation token reaches the underlying delay, so timed-out work actually stops instead of merely having its result ignored.
 
+## Background work and main-thread handoff
+
+`async` does not imply multithreading. `UniTask.Delay`, `Yield`, and most Unity async integrations stay on the Unity PlayerLoop. CPU-bound work must opt into a worker thread explicitly.
+
+The background-work sample follows this sequence:
+
+1. capture the Unity main-thread ID and frame;
+2. call `UniTask.SwitchToThreadPool()`;
+3. perform pure C# checksum work without touching `UnityEngine` APIs;
+4. poll a cancellation token inside the loop;
+5. call `UniTask.SwitchToMainThread(PlayerLoopTiming.Update)`;
+6. publish the result and update Unity-facing state on the main thread.
+
+Cancellation is cooperative: requesting cancellation does not terminate a thread. The worker loop must check the token and stop itself. Starting a newer calculation also invalidates the older result so stale work cannot overwrite the latest UI state.
+
+WebGL does not provide the same managed thread-pool environment. The sample therefore uses a compile-time WebGL fallback that divides the calculation across PlayerLoop frames instead of pretending that background threading is available.
+
 ## Try the sample
 
 1. Open the Unity project under `Project`.
@@ -55,10 +72,12 @@ The timeout sample uses `CancelAfterSlim` rather than UniTask's `.Timeout()` wra
 5. Run the UniTask delay, then destroy its temporary owner to observe lifetime cancellation.
 6. Run the UniTask timeout sample to compare `TimedOut` with `Cancelled`.
 7. Trigger the UniTask fault to see `Forget(exceptionHandler)` observe the exception.
+8. Run the background calculation and compare the displayed main, worker, and continuation thread IDs.
+9. Cancel a running calculation to observe cooperative worker cancellation.
 
 ## Run the tests
 
 Open `Window > General > Test Runner` and run both test assemblies:
 
 - `UnityCoreLab.Tests.EditMode` validates cancellation, timeout, exceptions, and stale-result protection without entering Play Mode.
-- `UnityCoreLab.Tests.PlayMode` validates component initialization, Task cancellation, UniTask PlayerLoop continuation, GameObject-lifetime cancellation, and fire-and-forget exception handling.
+- `UnityCoreLab.Tests.PlayMode` validates component initialization, Task cancellation, UniTask PlayerLoop continuation, GameObject-lifetime cancellation, fire-and-forget exception handling, worker-thread execution, cooperative cancellation, and main-thread handoff.

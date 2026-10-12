@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
@@ -23,6 +24,11 @@ namespace UnityCoreLab.Samples.AsyncOperations
         private UniTaskLifecycleOwner _uniTaskOwner;
         private OperationState _uniTaskState = OperationState.Idle;
         private string _uniTaskMessage = "Not started";
+        private BackgroundWorkOwner _backgroundWorkOwner;
+        private CancellationTokenSource _backgroundCancellation;
+        private OperationState _backgroundState = OperationState.Idle;
+        private string _backgroundMessage = "Not started";
+        private int _backgroundVersion;
         private Vector2 _scrollPosition;
 
         public bool IsInitialized =>
@@ -48,7 +54,11 @@ namespace UnityCoreLab.Samples.AsyncOperations
                 return;
             }
 
-            float pulse = _coordinator.Current.State == OperationState.Running
+            bool hasRunningWork =
+                _coordinator.Current.State == OperationState.Running ||
+                _uniTaskState == OperationState.Running ||
+                _backgroundState == OperationState.Running;
+            float pulse = hasRunningWork
                 ? 1f + Mathf.Sin(Time.time * 6f) * 0.12f
                 : 1f;
             _stateRenderer.transform.localScale = Vector3.one * (2f * pulse);
@@ -56,13 +66,14 @@ namespace UnityCoreLab.Samples.AsyncOperations
 
         private void OnDestroy()
         {
-            if (_coordinator == null)
-            {
-                return;
-            }
+            _backgroundVersion++;
+            _backgroundCancellation?.Cancel();
 
-            _coordinator.StateChanged -= OnStateChanged;
-            _coordinator.Dispose();
+            if (_coordinator != null)
+            {
+                _coordinator.StateChanged -= OnStateChanged;
+                _coordinator.Dispose();
+            }
 
             if (_stateMaterial != null)
             {
@@ -181,6 +192,21 @@ namespace UnityCoreLab.Samples.AsyncOperations
                 StartUniTaskFaultSample();
             }
 
+            GUILayout.Space(18);
+            GUILayout.Label("01.3 Background work / main-thread handoff", _labelStyle);
+            GUILayout.Label($"Background state: {_backgroundState}", _labelStyle);
+            GUILayout.Label(_backgroundMessage, _labelStyle);
+
+            if (GUILayout.Button("Run CPU calculation on a worker thread", _buttonStyle))
+            {
+                StartBackgroundWorkSample();
+            }
+
+            if (GUILayout.Button("Cancel background calculation", _buttonStyle))
+            {
+                CancelBackgroundWork();
+            }
+
             GUILayout.Space(16);
             GUILayout.Label("Recent state changes", _labelStyle);
             foreach (string message in _logs)
@@ -296,6 +322,99 @@ namespace UnityCoreLab.Samples.AsyncOperations
             ownerObject.transform.SetParent(transform, false);
             _uniTaskOwner = ownerObject.AddComponent<UniTaskLifecycleOwner>();
             return _uniTaskOwner;
+        }
+
+        private void StartBackgroundWorkSample()
+        {
+            int version = ++_backgroundVersion;
+            CancellationTokenSource previousCancellation = _backgroundCancellation;
+            var cancellation = new CancellationTokenSource();
+            _backgroundCancellation = cancellation;
+            previousCancellation?.Cancel();
+
+            _backgroundState = OperationState.Running;
+            _backgroundMessage =
+                "Started on the Unity main thread; the pulsing cube should remain responsive.";
+
+            RunBackgroundWorkAndReportAsync(
+                    version,
+                    EnsureBackgroundWorkOwner(),
+                    cancellation)
+                .Forget(exception => HandleBackgroundException(version, exception));
+        }
+
+        private async UniTask RunBackgroundWorkAndReportAsync(
+            int version,
+            BackgroundWorkOwner owner,
+            CancellationTokenSource cancellation)
+        {
+            try
+            {
+                BackgroundWorkResult result = await owner.CalculateAsync(
+                    500000000,
+                    cancellation.Token);
+
+                if (this == null || version != _backgroundVersion)
+                {
+                    return;
+                }
+
+                _backgroundState = result.State;
+                _backgroundMessage =
+                    $"{result.State}; main {result.StartedThreadId} -> " +
+                    $"worker {result.WorkerThreadId} -> main {result.ContinuationThreadId}; " +
+                    $"{result.Elapsed.TotalMilliseconds:F0} ms; checksum {result.Checksum}.";
+                RecordLog($"Background work | {result.State}");
+            }
+            finally
+            {
+                if (this != null && ReferenceEquals(_backgroundCancellation, cancellation))
+                {
+                    _backgroundCancellation = null;
+                }
+
+                cancellation.Dispose();
+            }
+        }
+
+        private void CancelBackgroundWork()
+        {
+            if (_backgroundCancellation == null)
+            {
+                _backgroundMessage = "No active background calculation.";
+                return;
+            }
+
+            _backgroundCancellation.Cancel();
+            _backgroundMessage =
+                "Cancellation requested; the worker stops at its next checkpoint.";
+        }
+
+        private void HandleBackgroundException(int version, Exception exception)
+        {
+            if (this == null || version != _backgroundVersion)
+            {
+                return;
+            }
+
+            _backgroundState = exception is OperationCanceledException
+                ? OperationState.Cancelled
+                : OperationState.Failed;
+            _backgroundMessage = exception.Message;
+            RecordLog($"Background work | {_backgroundState} | {exception.Message}");
+        }
+
+        private BackgroundWorkOwner EnsureBackgroundWorkOwner()
+        {
+            if (_backgroundWorkOwner != null)
+            {
+                return _backgroundWorkOwner;
+            }
+
+            var ownerObject = new GameObject("Background Work Owner");
+            ownerObject.transform.SetParent(transform, false);
+            _backgroundWorkOwner = ownerObject.AddComponent<BackgroundWorkOwner>();
+            return _backgroundWorkOwner;
         }
 
         private void OnStateChanged(OperationSnapshot snapshot)

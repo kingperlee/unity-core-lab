@@ -87,7 +87,8 @@ namespace UnityCoreLab.Tests.PlayMode
                 callbackThreadId = Thread.CurrentThread.ManagedThreadId;
             });
 
-            for (int frame = 0; frame < 10 && observed == null; frame++)
+            double deadline = Time.realtimeSinceStartupAsDouble + 2d;
+            while (observed == null && Time.realtimeSinceStartupAsDouble < deadline)
             {
                 yield return null;
             }
@@ -102,16 +103,18 @@ namespace UnityCoreLab.Tests.PlayMode
 
         private static IEnumerator Await(Task task)
         {
-            const int maximumFrames = 120;
-            int elapsedFrames = 0;
+            const double maximumSeconds = 5d;
+            double deadline = Time.realtimeSinceStartupAsDouble + maximumSeconds;
 
-            while (!task.IsCompleted && elapsedFrames < maximumFrames)
+            while (!task.IsCompleted && Time.realtimeSinceStartupAsDouble < deadline)
             {
-                elapsedFrames++;
                 yield return null;
             }
 
-            Assert.That(task.IsCompleted, Is.True, "UniTask did not finish within 120 frames.");
+            Assert.That(
+                task.IsCompleted,
+                Is.True,
+                "UniTask did not finish within 5 real-time seconds.");
 
             if (task.IsFaulted)
             {

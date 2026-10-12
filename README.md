@@ -25,9 +25,18 @@ Demonstrates cancellation, timeout classification, exception normalization, obse
 - PlayMode tests: `Project/Assets/Tests/PlayMode`
 - Design note: `docs/01-async-operation-lifecycle.md`
 
+### 02 Asset Handle Lifecycle and Ownership
+
+Demonstrates explicit asset ownership through disposable leases, load deduplication by key, reference counting, deterministic last-owner unload, and store-wide shutdown cleanup.
+
+- Runtime code: `Project/Assets/Runtime/AssetLifecycle`
+- EditMode tests: `Project/Assets/Tests/EditMode/AssetLifecycle`
+- Design note: `docs/02-asset-handle-lifecycle.md`
+
 ## Roadmap
 
-- Asset handle lifecycle and ownership
+- Async asset-load coalescing and waiter cancellation
+- Unity asset-provider integration and an interactive ownership sample
 - Object pooling and allocation analysis
 - Rendering performance comparisons
 - Runtime diagnostics and fault injection

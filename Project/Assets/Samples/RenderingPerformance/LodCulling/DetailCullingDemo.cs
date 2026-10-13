@@ -1,5 +1,6 @@
 using Unity.Profiling;
 using UnityEngine;
+using UnityCoreLab.Samples.RenderingPerformance.FrameTiming;
 using Object = UnityEngine.Object;
 
 namespace UnityCoreLab.Samples.RenderingPerformance.LodCulling
@@ -23,6 +24,8 @@ namespace UnityCoreLab.Samples.RenderingPerformance.LodCulling
         private GameObject _ownedCameraObject;
         private Camera _targetCamera;
         private DetailCullingMode _mode = DetailCullingMode.AllHighDetail;
+        private readonly FrameTimingCapture _frameTimingCapture =
+            new FrameTimingCapture();
         private float _highDetailDistance = DefaultHighDetailDistance;
         private float _cullDistance = DefaultCullDistance;
         private bool _updatePolicyActiveOnly;
@@ -40,6 +43,8 @@ namespace UnityCoreLab.Samples.RenderingPerformance.LodCulling
 
         public DetailCullingSnapshot Snapshot =>
             _workload?.Snapshot ?? default(DetailCullingSnapshot);
+
+        public FrameTimingCapture TimingCapture => _frameTimingCapture;
 
         private void Awake()
         {
@@ -75,8 +80,14 @@ namespace UnityCoreLab.Samples.RenderingPerformance.LodCulling
             RunSimulatedUpdate();
         }
 
+        private void LateUpdate()
+        {
+            _frameTimingCapture.Tick();
+        }
+
         public void SetMode(DetailCullingMode mode)
         {
+            _frameTimingCapture.Cancel();
             _mode = mode;
             EvaluateNow();
         }
@@ -85,6 +96,7 @@ namespace UnityCoreLab.Samples.RenderingPerformance.LodCulling
             float highDetailDistance,
             float cullDistance)
         {
+            _frameTimingCapture.Cancel();
             _highDetailDistance = highDetailDistance;
             _cullDistance = cullDistance;
             EvaluateNow();
@@ -92,6 +104,7 @@ namespace UnityCoreLab.Samples.RenderingPerformance.LodCulling
 
         public void RebuildObjects(int objectCount)
         {
+            _frameTimingCapture.Cancel();
             if (objectCount <= 0)
             {
                 throw new System.ArgumentOutOfRangeException(
@@ -108,6 +121,7 @@ namespace UnityCoreLab.Samples.RenderingPerformance.LodCulling
             bool policyActiveOnly,
             int iterations)
         {
+            _frameTimingCapture.Cancel();
             _updatePolicyActiveOnly = policyActiveOnly;
             _simulatedUpdateIterations = iterations;
             RunSimulatedUpdate();
@@ -115,6 +129,7 @@ namespace UnityCoreLab.Samples.RenderingPerformance.LodCulling
 
         public void SetCameraPreset(int preset)
         {
+            _frameTimingCapture.Cancel();
             switch (preset)
             {
                 case 0:
@@ -145,8 +160,25 @@ namespace UnityCoreLab.Samples.RenderingPerformance.LodCulling
             EvaluateNow();
         }
 
+        public void StartFrameTimingCapture(
+            int warmupFrames = 60,
+            int sampleFrames = 120)
+        {
+            DetailCullingSnapshot snapshot = Snapshot;
+            string updateScope = _updatePolicyActiveOnly
+                ? "policy-active"
+                : "all";
+            string label =
+                $"{_mode}; objects={snapshot.ObjectCount}; " +
+                $"distances={_highDetailDistance:0}/{_cullDistance:0}; " +
+                $"logic={updateScope}x{_simulatedUpdateIterations}; " +
+                $"vsync={QualitySettings.vSyncCount}";
+            _frameTimingCapture.Start(label, warmupFrames, sampleFrames);
+        }
+
         private void OnDestroy()
         {
+            _frameTimingCapture.Cancel();
             _drawCallsRecorder.Dispose();
             _batchesRecorder.Dispose();
             _setPassRecorder.Dispose();
@@ -428,6 +460,8 @@ namespace UnityCoreLab.Samples.RenderingPerformance.LodCulling
 
             GUILayout.EndHorizontal();
 
+            DrawFrameTimingCapture();
+
             GUILayout.Space(12f);
             GUILayout.Label(
                 "Policy-culled counts only objects explicitly disabled by the " +
@@ -441,6 +475,78 @@ namespace UnityCoreLab.Samples.RenderingPerformance.LodCulling
             GUILayout.EndScrollView();
             GUILayout.EndArea();
             GUI.matrix = previousMatrix;
+        }
+
+        private void DrawFrameTimingCapture()
+        {
+            GUILayout.Space(12f);
+            GUILayout.Label("04.4 Controlled frame timing capture", _labelStyle);
+            GUILayout.Label(
+                $"Capture state: {_frameTimingCapture.State}",
+                _labelStyle);
+
+            if (_frameTimingCapture.State ==
+                FrameTimingCaptureState.WarmingUp)
+            {
+                GUILayout.Label(
+                    $"Warm-up frames remaining: " +
+                    $"{_frameTimingCapture.WarmupFramesRemaining}",
+                    _labelStyle);
+            }
+            else if (_frameTimingCapture.State ==
+                     FrameTimingCaptureState.Sampling)
+            {
+                GUILayout.Label(
+                    $"Captured frames: {_frameTimingCapture.CapturedFrameCount}/" +
+                    $"{_frameTimingCapture.TargetSampleCount}",
+                    _labelStyle);
+            }
+
+            if (GUILayout.Button(
+                    "Warm up 60 + capture 120 frames",
+                    _buttonStyle))
+            {
+                StartFrameTimingCapture();
+            }
+
+            if (_frameTimingCapture.State ==
+                FrameTimingCaptureState.Unavailable)
+            {
+                GUILayout.Label(
+                    "Frame timing data is unavailable on this run. Verify " +
+                    "Frame Timing Stats and prefer a Development Build on " +
+                    "the target device.",
+                    _labelStyle);
+            }
+
+            FrameTimingSummary summary = _frameTimingCapture.Summary;
+            if (!summary.HasResult)
+            {
+                return;
+            }
+
+            GUILayout.Label($"Result: {summary.Label}", _labelStyle);
+            DrawDistribution("CPU frame", summary.CpuFrame);
+            DrawDistribution("CPU main thread", summary.CpuMainThread);
+            DrawDistribution("CPU render thread", summary.CpuRenderThread);
+            DrawDistribution("GPU frame", summary.GpuFrame);
+        }
+
+        private void DrawDistribution(
+            string name,
+            FrameTimingDistribution distribution)
+        {
+            if (!distribution.HasSamples)
+            {
+                GUILayout.Label($"{name}: unavailable", _labelStyle);
+                return;
+            }
+
+            GUILayout.Label(
+                $"{name}: median {distribution.MedianMilliseconds:F2} ms, " +
+                $"P95 {distribution.P95Milliseconds:F2} ms " +
+                $"(n={distribution.SampleCount})",
+                _labelStyle);
         }
 
         private void SimulatedIterationsButton(int iterations)

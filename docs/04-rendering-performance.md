@@ -198,3 +198,47 @@ and frustum policy, triangle estimates, renderer state, simulated-update
 gating, invalid thresholds, and runtime cleanup. Timing and fixed draw-count
 thresholds are deliberately excluded from tests because they depend on camera,
 pipeline, and platform.
+
+## 04.4 Controlled CPU/GPU frame-timing capture
+
+The LOD/culling scene includes a small measurement harness around Unity's
+`FrameTimingManager`. Select one workload configuration and press
+`Warm up 60 + capture 120 frames`. The capture records its configuration label,
+discards a fixed warm-up window, then reports median and P95 values for:
+
+- total CPU frame time;
+- CPU main-thread frame time;
+- CPU render-thread frame time;
+- GPU frame time, when the current platform supplies it.
+
+Changing the mode, thresholds, object count, simulated-update scope, or camera
+preset cancels an in-progress capture. This prevents a result from silently
+mixing samples from different workloads. `Frame Timing Stats` is enabled in the
+project settings, but GPU timing can still be unavailable in the Editor or on a
+particular graphics API. In that case the UI says `unavailable`; it does not
+substitute FPS or CPU time and mislabel it as GPU time.
+
+For a fair comparison, keep resolution, camera, quality settings, VSync,
+target frame rate, object count, and update workload identical. Prefer a
+Development Build running on the target device, repeat each mode several times,
+and compare distributions rather than one frame or the Game view FPS display.
+Median represents the typical sampled frame. P95 exposes slower tail frames,
+so the pair is more informative than a single average.
+
+The capture is deliberately an observation tool rather than a performance test:
+automated tests verify the deterministic percentile calculation, but do not
+assert that one rendering mode must be faster. GPU and CPU timings vary with
+hardware, driver, thermal state, graphics API, pipeline configuration, and
+background activity.
+
+The 4096-object experiment illustrates the interpretation rule. If
+`AllHighDetail` and `DistanceLod` report similar GPU time even though LOD lowers
+triangle count, the workload is probably not vertex-bound at that detail ratio.
+`DistanceLodAndExplicitCulling` can still improve GPU time because disabling
+Renderers removes complete draw submissions and their vertex, raster, fragment,
+and render-target work. Reducing a counter that is not the active bottleneck is
+not expected to reduce total frame time.
+
+For a concise Chinese review of the four timing metrics, their frame boundaries,
+pipeline overlap, and optimization implications, see
+[`04-CPU与GPU帧时序指标技术回顾.md`](04-CPU与GPU帧时序指标技术回顾.md).

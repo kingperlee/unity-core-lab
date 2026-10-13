@@ -64,18 +64,22 @@ overdraw sample keeps geometry and layer counts matched while switching between
 opaque depth writes and transparent alpha blending at controlled screen
 coverage. The LOD/culling sample separates mesh-detail reduction from an
 explicit distance and camera-frustum visibility policy.
+The same LOD/culling scene also includes a controlled frame-timing capture that
+uses a fixed warm-up and sampling window instead of comparing instantaneous FPS.
 
 - Rendering sample: `Project/Assets/Samples/RenderingPerformance`
 - Submission scene: `Project/Assets/Samples/RenderingPerformance/RenderingPerformanceDemo.unity`
 - Overdraw scene: `Project/Assets/Samples/RenderingPerformance/OverdrawFillRate/OverdrawFillRateDemo.unity`
 - LOD/culling scene: `Project/Assets/Samples/RenderingPerformance/LodCulling/DetailCullingDemo.unity`
+- Frame-timing capture: `Project/Assets/Samples/RenderingPerformance/FrameTiming`
 - PlayMode tests: `Project/Assets/Tests/PlayMode/RenderingPerformance`
 - Design note: `docs/04-rendering-performance.md`
 - Overdraw review: `docs/04-过度绘制与填充率技术回顾.md`
+- Frame-timing review: `docs/04-CPU与GPU帧时序指标技术回顾.md`
 
 ## Roadmap
 
-- GPU timing capture and mobile-device rendering case studies
+- Mobile-device rendering case studies
 - Runtime diagnostics and fault injection
 
 Copyright © 2026 Jiangbo Li. All rights reserved.

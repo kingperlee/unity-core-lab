@@ -123,3 +123,78 @@ are device- and pipeline-dependent.
 For a Chinese-language review of rasterization, Fragment Shader execution,
 Early-Z, transparent overdraw, and the correct Profiler modules, see
 [`04-过度绘制与填充率技术回顾.md`](04-过度绘制与填充率技术回顾.md).
+
+## 04.3 Distance LOD and explicit visibility policy
+
+The third scene studies work that can be reduced before expensive geometry and
+fragment processing. It creates a fixed field of shared-material objects and
+switches among three deterministic policies:
+
+1. **All high detail** keeps the built-in sphere mesh on every Renderer.
+2. **Distance LOD** switches objects beyond a configurable distance to the
+   built-in cube mesh while keeping every Renderer enabled.
+3. **Distance LOD + explicit culling** also disables objects beyond a maximum
+   distance or outside the camera frustum.
+
+The sample exposes high-detail, low-detail, and policy-culled counts plus an
+estimated visible triangle count. The estimate is calculated from the policy's
+selected meshes. The frame-wide Profiler triangle counter can be lower because
+Unity can internally frustum-cull an enabled Renderer without changing its
+`Renderer.enabled` property.
+
+This distinction is intentional: normal Renderer frustum culling already
+prevents off-camera geometry from being submitted for rendering. An explicit
+visibility policy is still useful when distance should disable animation,
+particles, gameplay updates, streaming, or entire object hierarchies. Manual
+frustum tests should not be presented as automatically faster than Unity's
+built-in Renderer culling.
+
+The per-frame evaluation:
+
+- compares squared distances to avoid square roots;
+- reuses a six-plane buffer when calculating the camera frustum;
+- changes `sharedMesh` and `Renderer.enabled` only when state changes;
+- uses one shared material for all objects;
+- wraps policy evaluation in the
+  `UnityCoreLab.DetailCulling.Evaluate` Profiler marker.
+
+The scene also contains a deliberately synthetic per-object CPU workload. It
+can update every object or only objects left active by the explicit policy, at
+8, 32, or 96 iterations per object. The work is isolated under the
+`UnityCoreLab.DetailCulling.SimulatedUpdate` Profiler marker. Its purpose is to
+demonstrate a boundary condition: culling has its own CPU cost and only creates
+a CPU-side net saving when it prevents more expensive downstream work. The
+synthetic loop must not be presented as a production gameplay benchmark.
+
+Object-count presets of 225, 1024, and 4096 make the steady-state CPU trend
+visible on desktop hardware. Rebuilding the workload intentionally allocates
+and creates GameObjects, so discard the rebuild frame and compare stable frames
+afterward. A useful controlled comparison is:
+
+1. select 4096 objects and 96 update iterations;
+2. select `Distance LOD + explicit distance/frustum policy`;
+3. compare `Update logic on all objects` against
+   `Update logic on policy-active objects only`;
+4. inspect both custom markers in CPU Profiler Hierarchy or Timeline view.
+
+LOD-only mode should primarily reduce the triangle count. It does not remove
+Renderer components or per-object simulated updates, so it should not be
+claimed as a general CPU optimization.
+
+Open
+`Project/Assets/Samples/RenderingPerformance/LodCulling/DetailCullingDemo.unity`
+and compare modes with the same camera preset and threshold pair. Observe both
+the deterministic snapshot and the Rendering Profiler counters. Moving the
+camera changes which objects fall into the high-detail, low-detail, and culled
+bands.
+
+This baseline uses an explicit distance policy so its state is testable and its
+triangle estimate is deterministic. Unity `LODGroup`, `CullingGroup`, LOD
+cross-fade, hysteresis, and production asset-authoring workflows are separate
+follow-up topics rather than hidden inside this first comparison.
+
+Run `DetailCullingWorkloadPlayModeTests` to verify detail selection, distance
+and frustum policy, triangle estimates, renderer state, simulated-update
+gating, invalid thresholds, and runtime cleanup. Timing and fixed draw-count
+thresholds are deliberately excluded from tests because they depend on camera,
+pipeline, and platform.

@@ -62,11 +62,13 @@ pressure. The submission sample compares unique materials, shared material
 renderers, MaterialPropertyBlock overrides, and explicit GPU instancing. The
 overdraw sample keeps geometry and layer counts matched while switching between
 opaque depth writes and transparent alpha blending at controlled screen
-coverage.
+coverage. The LOD/culling sample separates mesh-detail reduction from an
+explicit distance and camera-frustum visibility policy.
 
 - Rendering sample: `Project/Assets/Samples/RenderingPerformance`
 - Submission scene: `Project/Assets/Samples/RenderingPerformance/RenderingPerformanceDemo.unity`
 - Overdraw scene: `Project/Assets/Samples/RenderingPerformance/OverdrawFillRate/OverdrawFillRateDemo.unity`
+- LOD/culling scene: `Project/Assets/Samples/RenderingPerformance/LodCulling/DetailCullingDemo.unity`
 - PlayMode tests: `Project/Assets/Tests/PlayMode/RenderingPerformance`
 - Design note: `docs/04-rendering-performance.md`
 - Overdraw review: `docs/04-过度绘制与填充率技术回顾.md`

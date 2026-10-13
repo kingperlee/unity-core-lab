@@ -57,20 +57,23 @@ markers without encoding a fragile "pooling must win" test assertion.
 
 ### 04 Rendering Performance and Submission Analysis
 
-Builds controlled rendering workloads with unique materials, a shared material
-without overrides, shared material plus MaterialPropertyBlock, and explicit GPU
-instancing with per-instance colors. The demo separates deterministic
-scene-structure counts from frame-wide Profiler counters and exposes Unity's
-1023-matrix instanced draw boundary for Frame Debugger analysis.
+Builds controlled rendering workloads for both CPU submission and GPU pixel
+pressure. The submission sample compares unique materials, shared material
+renderers, MaterialPropertyBlock overrides, and explicit GPU instancing. The
+overdraw sample keeps geometry and layer counts matched while switching between
+opaque depth writes and transparent alpha blending at controlled screen
+coverage.
 
 - Rendering sample: `Project/Assets/Samples/RenderingPerformance`
-- Interactive scene: `Project/Assets/Samples/RenderingPerformance/RenderingPerformanceDemo.unity`
+- Submission scene: `Project/Assets/Samples/RenderingPerformance/RenderingPerformanceDemo.unity`
+- Overdraw scene: `Project/Assets/Samples/RenderingPerformance/OverdrawFillRate/OverdrawFillRateDemo.unity`
 - PlayMode tests: `Project/Assets/Tests/PlayMode/RenderingPerformance`
 - Design note: `docs/04-rendering-performance.md`
+- Overdraw review: `docs/04-过度绘制与填充率技术回顾.md`
 
 ## Roadmap
 
-- Frame Debugger case studies and overdraw comparison
+- GPU timing capture and mobile-device rendering case studies
 - Runtime diagnostics and fault injection
 
 Copyright © 2026 Jiangbo Li. All rights reserved.

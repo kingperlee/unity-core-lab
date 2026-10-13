@@ -52,7 +52,7 @@ Use Frame Debugger to inspect why Unity grouped or separated individual draws.
 
 Open
 `Project/Assets/Samples/RenderingPerformance/RenderingPerformanceDemo.unity`,
-enter Play Mode, and switch among the three modes at 100, 400, and 1000
+enter Play Mode, and switch among the four modes at 100, 400, and 1000
 instances. Allow at least one frame after switching before comparing counters.
 
 Run the `UnityCoreLab.Tests.PlayMode.RenderingPerformance` namespace to verify
@@ -64,3 +64,62 @@ depend on the render pipeline and platform.
 For a detailed Chinese-language explanation of Draw Calls, Statistics Batches,
 SetPass calls, SRP batches, and the current measurements, see
 [`04-rendering-submission-memo.zh-CN.md`](04-rendering-submission-memo.zh-CN.md).
+
+## 04.2 Overdraw and fill-rate baseline
+
+The second scene moves from CPU submission structure to GPU pixel pressure. It
+builds a stack of overlapping quads through two matched modes:
+
+1. **Opaque depth write** uses `Blend One Zero`, `ZWrite On`, and the Geometry
+   queue. Opaque front-to-back sorting and depth testing can reject covered
+   fragments before the full fragment workload runs.
+2. **Transparent alpha blend** uses `Blend SrcAlpha OneMinusSrcAlpha`,
+   `ZWrite Off`, and the Transparent queue. Every visible overlapping layer
+   must be shaded and blended to preserve the result.
+
+Both modes create the same number of quads, Renderer components, material
+instances, and potential draw submissions. They use the same vertex/fragment
+shader body; only render state, queue, and alpha differ. This keeps the sample
+focused on depth rejection and blending instead of presenting fewer draw calls
+as a fill-rate optimization.
+
+The controls expose 8, 32, 64, and 128 layers plus estimated 25%, 50%, and 100%
+screen coverage per layer. The quad's width and height are each multiplied by
+the square root of the requested ratio, so its estimated pixel area follows the
+selected percentage. A matched fragment-work control runs 1, 8, or 24 loop
+iterations in both modes. It amplifies the cost on desktop GPUs without giving
+the transparent path a different shader workload. The overlay reports:
+
+- deterministic Renderer and material counts;
+- frame-wide Draw Calls, Batches, and SetPass calls;
+- `equivalent fullscreen layers = layer count x coverage ratio`;
+- `relative fragment-work pressure = fullscreen layers x iterations`.
+
+Equivalent fullscreen layers and relative fragment-work pressure are workload
+descriptors, not hardware timings or counts of fragments that actually ran.
+Early-Z behavior, tile-based GPU architecture, resolution, MSAA, render scale,
+Editor overhead, and the current URP configuration all affect the measured
+result.
+
+Open
+`Project/Assets/Samples/RenderingPerformance/OverdrawFillRate/OverdrawFillRateDemo.unity`
+and compare modes at the same layer count and coverage. For meaningful timing,
+use a Development Build on the target device, disable VSync or other frame-rate
+caps, allow the workload to warm up, and compare GPU timings over many frames.
+Use Frame Debugger to confirm queue, blend, and depth-write state; use a GPU
+capture tool when you need proof of fragment cost or tile behavior.
+
+On a desktop GPU the default workload can be too small to move frame time. Try
+64 or 128 layers, 100% coverage, and 24 fragment iterations. Draw Calls should
+remain comparable while the transparent mode shades and blends every layer.
+If FPS still stays capped, inspect GPU frame time rather than using FPS as the
+measurement.
+
+Run `OverdrawWorkloadPlayModeTests` to verify matched geometry ownership,
+coverage sizing, material render states, invalid-input handling, and cleanup.
+The tests intentionally make no FPS or GPU-time assertion because those values
+are device- and pipeline-dependent.
+
+For a Chinese-language review of rasterization, Fragment Shader execution,
+Early-Z, transparent overdraw, and the correct Profiler modules, see
+[`04-过度绘制与填充率技术回顾.md`](04-过度绘制与填充率技术回顾.md).

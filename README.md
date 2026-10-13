@@ -77,9 +77,23 @@ uses a fixed warm-up and sampling window instead of comparing instantaneous FPS.
 - Overdraw review: `docs/04-过度绘制与填充率技术回顾.md`
 - Frame-timing review: `docs/04-CPU与GPU帧时序指标技术回顾.md`
 
+### 05 Runtime Diagnostics and Fault Injection
+
+Builds a bounded runtime diagnostic pipeline instead of an unbounded debug log.
+The first sample detects warning and critical frame hitches from a monotonic
+clock, coalesces repeated reports during a cooldown, retains chronological
+events in a fixed-capacity ring buffer, and exposes safe main-thread stall and
+handled-exception injection controls.
+
+- Runtime code: `Project/Assets/Runtime/Diagnostics`
+- Interactive scene: `Project/Assets/Samples/RuntimeDiagnostics/RuntimeDiagnosticsDemo.unity`
+- EditMode tests: `Project/Assets/Tests/EditMode/RuntimeDiagnostics`
+- PlayMode test: `Project/Assets/Tests/PlayMode/RuntimeDiagnosticsDemoPlayModeTests.cs`
+- Design note: `docs/05-runtime-diagnostics.md`
+
 ## Roadmap
 
 - Mobile-device rendering case studies
-- Runtime diagnostics and fault injection
+- Allocation counters, report serialization, and platform crash/ANR adapters
 
 Copyright © 2026 Jiangbo Li. All rights reserved.

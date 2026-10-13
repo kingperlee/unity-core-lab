@@ -17,27 +17,35 @@ namespace UnityCoreLab.Samples.RenderingPerformance
         private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
 
         private readonly Mesh _mesh;
-        private readonly Material _sharedMaterial;
+        private readonly Material _rendererMaterial;
+        private readonly Material _instancedMaterial;
         private readonly Transform _root;
         private readonly List<GameObject> _rendererObjects =
             new List<GameObject>();
         private readonly List<Material> _ownedMaterials =
             new List<Material>();
         private Matrix4x4[][] _instancedBatches = Array.Empty<Matrix4x4[]>();
+        private MaterialPropertyBlock[] _instancedPropertyBlocks =
+            Array.Empty<MaterialPropertyBlock>();
+        private int _explicitColorCount;
         private RenderingWorkloadSnapshot _snapshot;
         private bool _disposed;
 
         public RenderingWorkload(
             Mesh mesh,
-            Material sharedMaterial,
+            Material rendererMaterial,
+            Material instancedMaterial,
             Transform root)
         {
             _mesh = mesh != null
                 ? mesh
                 : throw new ArgumentNullException(nameof(mesh));
-            _sharedMaterial = sharedMaterial != null
-                ? sharedMaterial
-                : throw new ArgumentNullException(nameof(sharedMaterial));
+            _rendererMaterial = rendererMaterial != null
+                ? rendererMaterial
+                : throw new ArgumentNullException(nameof(rendererMaterial));
+            _instancedMaterial = instancedMaterial != null
+                ? instancedMaterial
+                : throw new ArgumentNullException(nameof(instancedMaterial));
             _root = root != null
                 ? root
                 : throw new ArgumentNullException(nameof(root));
@@ -68,18 +76,32 @@ namespace UnityCoreLab.Samples.RenderingPerformance
             switch (mode)
             {
                 case RenderingWorkloadMode.UniqueMaterialRenderers:
-                    _sharedMaterial.enableInstancing = false;
-                    BuildRendererObjects(matrices, uniqueMaterials: true);
+                    _rendererMaterial.enableInstancing = false;
+                    BuildRendererObjects(
+                        matrices,
+                        uniqueMaterials: true,
+                        usePropertyBlocks: false);
+                    break;
+
+                case RenderingWorkloadMode.SharedMaterialRenderers:
+                    _rendererMaterial.enableInstancing = false;
+                    BuildRendererObjects(
+                        matrices,
+                        uniqueMaterials: false,
+                        usePropertyBlocks: false);
                     break;
 
                 case RenderingWorkloadMode.SharedMaterialPropertyBlocks:
-                    _sharedMaterial.enableInstancing = true;
-                    BuildRendererObjects(matrices, uniqueMaterials: false);
+                    _rendererMaterial.enableInstancing = false;
+                    BuildRendererObjects(
+                        matrices,
+                        uniqueMaterials: false,
+                        usePropertyBlocks: true);
                     break;
 
                 case RenderingWorkloadMode.ExplicitGpuInstancing:
-                    _sharedMaterial.enableInstancing = true;
-                    _instancedBatches = SplitIntoInstancedBatches(matrices);
+                    _instancedMaterial.enableInstancing = true;
+                    BuildExplicitInstancedBatches(matrices);
                     break;
 
                 default:
@@ -95,7 +117,8 @@ namespace UnityCoreLab.Samples.RenderingPerformance
                 instanceCount,
                 rendererCount,
                 materialCount,
-                _instancedBatches.Length);
+                _instancedBatches.Length,
+                _explicitColorCount);
         }
 
         public void RenderInstanced(Camera targetCamera = null)
@@ -106,15 +129,18 @@ namespace UnityCoreLab.Samples.RenderingPerformance
                 return;
             }
 
-            foreach (Matrix4x4[] batch in _instancedBatches)
+            for (int batchIndex = 0;
+                 batchIndex < _instancedBatches.Length;
+                 batchIndex++)
             {
+                Matrix4x4[] batch = _instancedBatches[batchIndex];
                 Graphics.DrawMeshInstanced(
                     _mesh,
                     0,
-                    _sharedMaterial,
+                    _instancedMaterial,
                     batch,
                     batch.Length,
-                    null,
+                    _instancedPropertyBlocks[batchIndex],
                     ShadowCastingMode.Off,
                     receiveShadows: false,
                     layer: _root.gameObject.layer,
@@ -137,7 +163,8 @@ namespace UnityCoreLab.Samples.RenderingPerformance
 
         private void BuildRendererObjects(
             Matrix4x4[] matrices,
-            bool uniqueMaterials)
+            bool uniqueMaterials,
+            bool usePropertyBlocks)
         {
             var propertyBlock = new MaterialPropertyBlock();
             for (int i = 0; i < matrices.Length; i++)
@@ -153,10 +180,10 @@ namespace UnityCoreLab.Samples.RenderingPerformance
                 meshRenderer.shadowCastingMode = ShadowCastingMode.Off;
                 meshRenderer.receiveShadows = false;
 
-                Color color = Color.HSVToRGB((i % 24) / 24f, 0.72f, 0.95f);
+                Color color = InstanceColor(i);
                 if (uniqueMaterials)
                 {
-                    var material = new Material(_sharedMaterial)
+                    var material = new Material(_rendererMaterial)
                     {
                         enableInstancing = false
                     };
@@ -166,9 +193,12 @@ namespace UnityCoreLab.Samples.RenderingPerformance
                 }
                 else
                 {
-                    meshRenderer.sharedMaterial = _sharedMaterial;
-                    propertyBlock.SetColor(BaseColorId, color);
-                    meshRenderer.SetPropertyBlock(propertyBlock);
+                    meshRenderer.sharedMaterial = _rendererMaterial;
+                    if (usePropertyBlocks)
+                    {
+                        propertyBlock.SetColor(BaseColorId, color);
+                        meshRenderer.SetPropertyBlock(propertyBlock);
+                    }
                 }
 
                 _rendererObjects.Add(instance);
@@ -190,7 +220,40 @@ namespace UnityCoreLab.Samples.RenderingPerformance
             _rendererObjects.Clear();
             _ownedMaterials.Clear();
             _instancedBatches = Array.Empty<Matrix4x4[]>();
+            _instancedPropertyBlocks = Array.Empty<MaterialPropertyBlock>();
+            _explicitColorCount = 0;
             _snapshot = default(RenderingWorkloadSnapshot);
+        }
+
+        private void BuildExplicitInstancedBatches(Matrix4x4[] matrices)
+        {
+            _instancedBatches = SplitIntoInstancedBatches(matrices);
+            _instancedPropertyBlocks =
+                new MaterialPropertyBlock[_instancedBatches.Length];
+
+            int sourceIndex = 0;
+            for (int batchIndex = 0;
+                 batchIndex < _instancedBatches.Length;
+                 batchIndex++)
+            {
+                int batchLength = _instancedBatches[batchIndex].Length;
+                var colors = new Vector4[batchLength];
+                for (int colorIndex = 0;
+                     colorIndex < batchLength;
+                     colorIndex++)
+                {
+                    int instanceIndex = sourceIndex + colorIndex;
+                    Color color = InstanceColor(instanceIndex);
+                    colors[colorIndex] = color;
+                }
+
+                var propertyBlock = new MaterialPropertyBlock();
+                propertyBlock.SetVectorArray(BaseColorId, colors);
+                _instancedPropertyBlocks[batchIndex] = propertyBlock;
+                sourceIndex += batchLength;
+            }
+
+            _explicitColorCount = sourceIndex;
         }
 
         private static Matrix4x4[] BuildMatrices(
@@ -240,6 +303,14 @@ namespace UnityCoreLab.Samples.RenderingPerformance
             }
 
             return batches;
+        }
+
+        private static Color InstanceColor(int instanceIndex)
+        {
+            return Color.HSVToRGB(
+                (instanceIndex % 24) / 24f,
+                0.72f,
+                0.95f);
         }
 
         private static void DestroyOwned(Object ownedObject)

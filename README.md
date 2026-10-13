@@ -57,10 +57,11 @@ markers without encoding a fragile "pooling must win" test assertion.
 
 ### 04 Rendering Performance and Submission Analysis
 
-Builds equivalent rendering workloads with unique materials, shared material
-plus MaterialPropertyBlock, and explicit GPU instancing. The demo separates
-deterministic scene-structure counts from frame-wide Profiler counters and
-exposes Unity's 1023-matrix instanced draw boundary for Frame Debugger analysis.
+Builds controlled rendering workloads with unique materials, a shared material
+without overrides, shared material plus MaterialPropertyBlock, and explicit GPU
+instancing with per-instance colors. The demo separates deterministic
+scene-structure counts from frame-wide Profiler counters and exposes Unity's
+1023-matrix instanced draw boundary for Frame Debugger analysis.
 
 - Rendering sample: `Project/Assets/Samples/RenderingPerformance`
 - Interactive scene: `Project/Assets/Samples/RenderingPerformance/RenderingPerformanceDemo.unity`

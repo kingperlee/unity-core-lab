@@ -7,11 +7,12 @@
 ## 1. 04.1 阶段要说明什么
 
 04.1 关注的是 CPU 如何为 GPU 组织和提交绘制工作，而不是完整的 GPU 性能优化。
-当前 Demo 对比三条路径：
+当前 Demo 对比四条路径：
 
 1. 每个 Renderer 使用独立 Material。
-2. 多个 Renderer 共享 Material，并通过 `MaterialPropertyBlock` 提供逐物体颜色。
-3. 不创建逐物体 Renderer，改用 `Graphics.DrawMeshInstanced` 显式提交实例。
+2. 多个 Renderer 共享 Material，不提供逐物体覆盖数据。
+3. 多个 Renderer 共享 Material，并通过 `MaterialPropertyBlock` 提供逐物体颜色。
+4. 不创建逐物体 Renderer，改用 `Graphics.DrawMeshInstanced` 显式提交矩阵和颜色。
 
 该阶段主要回答以下问题：
 
@@ -174,7 +175,7 @@ SRP Batcher 路径更接近：
 MPB 可以避免调用 `renderer.material` 时产生材质副本，也可以为 Renderer 提供独立
 属性，但它并不保证是 URP 中成本最低的路径。
 
-当前 1000 实例的 Editor 实测为：
+04.1最初三模式基线在1000实例时的一次Editor实测为：
 
 | 模式 | Batches / Draw Calls | SetPass | CPU Main | Render Thread |
 | --- | ---: | ---: | ---: | ---: |
@@ -182,7 +183,9 @@ MPB 可以避免调用 `renderer.material` 时产生材质副本，也可以为 
 | Shared Material + MPB | 1033 | 1033 | 10.7 ms | 3.7 ms |
 | Explicit GPU Instancing | 33 | 31 | 5.2 ms | 1.2 ms |
 
-这些数字只描述当前机器、Editor、URP配置和测试场景，不能作为跨平台性能结论。但它们
+这组数字采集于增加“纯共享材质”对照和自定义实例颜色Shader之前，需要在补充完成后
+重新测量。它们只描述当时的机器、Editor、URP配置和测试场景，不能作为跨平台性能
+结论。但它们
 清楚地说明：MPB 模式虽然减少了 Batches，却因为离开 SRP Batcher 路径而产生大量
 SetPass，最终 CPU 帧时间反而更高。
 
@@ -205,8 +208,10 @@ Graphics.DrawMeshInstanced(mesh, 0, material, matrices);
 - 实例数量超过单次 API 支持的上限。
 - 平台图形 API 对单次绘制数据量存在更低限制。
 
-当前实现按每批最多 1023 个矩阵切分显式实例。即使1000个实例只调用一次 C# API，
-对象仍可能在 DepthNormal 和 Forward 等不同渲染阶段分别生成实例化 Draw Call。
+当前实现按每批最多1023个矩阵和颜色切分显式实例，并通过支持
+`UNITY_DEFINE_INSTANCED_PROP` 的独立Shader读取逐实例 `_BaseColor`。即使1000个实例
+只调用一次 C# API，对象仍可能在 DepthNormal 和 Forward 等不同渲染阶段分别生成
+实例化 Draw Call。
 
 正确顺序是：
 

@@ -7,13 +7,15 @@ namespace UnityCoreLab.Samples.RenderingPerformance
             int instanceCount,
             int rendererCount,
             int materialCount,
-            int explicitInstancedBatchCount)
+            int explicitInstancedBatchCount,
+            int explicitColorCount)
         {
             Mode = mode;
             InstanceCount = instanceCount;
             RendererCount = rendererCount;
             MaterialCount = materialCount;
             ExplicitInstancedBatchCount = explicitInstancedBatchCount;
+            ExplicitColorCount = explicitColorCount;
         }
 
         public RenderingWorkloadMode Mode { get; }
@@ -25,5 +27,7 @@ namespace UnityCoreLab.Samples.RenderingPerformance
         public int MaterialCount { get; }
 
         public int ExplicitInstancedBatchCount { get; }
+
+        public int ExplicitColorCount { get; }
     }
 }

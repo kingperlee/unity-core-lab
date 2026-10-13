@@ -11,9 +11,15 @@ namespace UnityCoreLab.Samples.RenderingPerformance
     public sealed class RenderingPerformanceDemo : MonoBehaviour
     {
         public const int DefaultInstanceCount = 400;
+        private const string InstancedShaderName =
+            "UnityCoreLab/Rendering/InstancedColor";
+
+        [SerializeField] private Material _rendererMaterialTemplate;
+        [SerializeField] private Material _instancedMaterialTemplate;
 
         private RenderingWorkload _workload;
-        private Material _sharedMaterial;
+        private Material _ownedRendererMaterial;
+        private Material _ownedInstancedMaterial;
         private GameObject _meshSource;
         private GameObject _ownedCameraObject;
         private Camera _targetCamera;
@@ -38,24 +44,15 @@ namespace UnityCoreLab.Samples.RenderingPerformance
             _meshSource.SetActive(false);
             Mesh mesh = _meshSource.GetComponent<MeshFilter>().sharedMesh;
 
-            Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
-            if (shader == null)
-            {
-                shader = Shader.Find("Unlit/Color");
-            }
-
-            _sharedMaterial = new Material(shader)
-            {
-                name = "Rendering Workload Shared Material",
-                enableInstancing = true,
-                color = new Color(0.2f, 0.72f, 1f, 1f)
-            };
+            Material rendererMaterial = ResolveRendererMaterial();
+            Material instancedMaterial = ResolveInstancedMaterial();
 
             var workloadRoot = new GameObject("Rendering Workload");
             workloadRoot.transform.SetParent(transform, false);
             _workload = new RenderingWorkload(
                 mesh,
-                _sharedMaterial,
+                rendererMaterial,
+                instancedMaterial,
                 workloadRoot.transform);
 
             EnsureCamera();
@@ -88,7 +85,8 @@ namespace UnityCoreLab.Samples.RenderingPerformance
             _setPassRecorder.Dispose();
             _workload?.Dispose();
             _workload = null;
-            DestroyOwned(_sharedMaterial);
+            DestroyOwned(_ownedRendererMaterial);
+            DestroyOwned(_ownedInstancedMaterial);
             DestroyOwned(_meshSource);
             DestroyOwned(_ownedCameraObject);
         }
@@ -170,6 +168,9 @@ namespace UnityCoreLab.Samples.RenderingPerformance
             GUILayout.Label(
                 $"Explicit instanced API calls: {snapshot.ExplicitInstancedBatchCount}",
                 _labelStyle);
+            GUILayout.Label(
+                $"Explicit per-instance colors: {snapshot.ExplicitColorCount}",
+                _labelStyle);
             GUILayout.Space(8f);
             GUILayout.Label(
                 $"Profiler Draw Calls: {CounterValue(_drawCallsRecorder)}",
@@ -185,6 +186,11 @@ namespace UnityCoreLab.Samples.RenderingPerformance
             if (GUILayout.Button("Unique material per Renderer", _buttonStyle))
             {
                 Rebuild(RenderingWorkloadMode.UniqueMaterialRenderers);
+            }
+
+            if (GUILayout.Button("Shared material only", _buttonStyle))
+            {
+                Rebuild(RenderingWorkloadMode.SharedMaterialRenderers);
             }
 
             if (GUILayout.Button(
@@ -226,6 +232,61 @@ namespace UnityCoreLab.Samples.RenderingPerformance
             GUILayout.EndScrollView();
             GUILayout.EndArea();
             GUI.matrix = previousMatrix;
+        }
+
+        private Material ResolveRendererMaterial()
+        {
+            if (_rendererMaterialTemplate != null)
+            {
+                _ownedRendererMaterial = new Material(_rendererMaterialTemplate)
+                {
+                    name = "Rendering Workload Runtime SRP Material",
+                    enableInstancing = false
+                };
+                return _ownedRendererMaterial;
+            }
+
+            Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
+            if (shader == null)
+            {
+                throw new MissingReferenceException(
+                    "Universal Render Pipeline/Unlit shader was not found.");
+            }
+
+            _ownedRendererMaterial = new Material(shader)
+            {
+                name = "Rendering Workload Runtime SRP Material",
+                enableInstancing = false,
+                color = new Color(0.2f, 0.72f, 1f, 1f)
+            };
+            return _ownedRendererMaterial;
+        }
+
+        private Material ResolveInstancedMaterial()
+        {
+            if (_instancedMaterialTemplate != null)
+            {
+                _ownedInstancedMaterial = new Material(_instancedMaterialTemplate)
+                {
+                    name = "Rendering Workload Runtime Instanced Material",
+                    enableInstancing = true
+                };
+                return _ownedInstancedMaterial;
+            }
+
+            Shader shader = Shader.Find(InstancedShaderName);
+            if (shader == null)
+            {
+                throw new MissingReferenceException(
+                    $"{InstancedShaderName} shader was not found.");
+            }
+
+            _ownedInstancedMaterial = new Material(shader)
+            {
+                name = "Rendering Workload Runtime Instanced Material",
+                enableInstancing = true
+            };
+            return _ownedInstancedMaterial;
         }
 
         private static string CounterValue(ProfilerRecorder recorder)

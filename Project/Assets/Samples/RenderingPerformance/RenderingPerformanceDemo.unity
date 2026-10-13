@@ -44,6 +44,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f81c6cf8cb9a46549a68d74103081006, type: 3}
   m_Name:
   m_EditorClassIdentifier:
+  _rendererMaterialTemplate: {fileID: 2100000, guid: 8f6a9114e8cf4ea59cd1fe0f6497a104, type: 2}
+  _instancedMaterialTemplate: {fileID: 2100000, guid: 8f6a9114e8cf4ea59cd1fe0f6497a105, type: 2}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

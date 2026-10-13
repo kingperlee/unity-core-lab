@@ -22,7 +22,8 @@ namespace UnityCoreLab.Tests.PlayMode.RenderingPerformance
                 instances: RenderingPerformanceDemo.DefaultInstanceCount,
                 renderers: RenderingPerformanceDemo.DefaultInstanceCount,
                 materials: RenderingPerformanceDemo.DefaultInstanceCount,
-                explicitBatches: 0);
+                explicitBatches: 0,
+                explicitColors: 0);
 
             demo.Rebuild(RenderingWorkloadMode.ExplicitGpuInstancing, 32);
             yield return null;
@@ -33,7 +34,8 @@ namespace UnityCoreLab.Tests.PlayMode.RenderingPerformance
                 instances: 32,
                 renderers: 0,
                 materials: 1,
-                explicitBatches: 1);
+                explicitBatches: 1,
+                explicitColors: 32);
 
             UnityEngine.Object.Destroy(root);
             yield return null;
@@ -54,7 +56,29 @@ namespace UnityCoreLab.Tests.PlayMode.RenderingPerformance
                     instances: 12,
                     renderers: 12,
                     materials: 12,
-                    explicitBatches: 0);
+                    explicitBatches: 0,
+                    explicitColors: 0);
+
+                fixture.Workload.Rebuild(
+                    RenderingWorkloadMode.SharedMaterialRenderers,
+                    12,
+                    columns: 4);
+                AssertSnapshot(
+                    fixture.Workload.Snapshot,
+                    RenderingWorkloadMode.SharedMaterialRenderers,
+                    instances: 12,
+                    renderers: 12,
+                    materials: 1,
+                    explicitBatches: 0,
+                    explicitColors: 0);
+
+                yield return null;
+                Assert.That(fixture.WorkloadRoot.childCount, Is.EqualTo(12));
+                Assert.That(
+                    fixture.WorkloadRoot.GetChild(0)
+                        .GetComponent<MeshRenderer>()
+                        .HasPropertyBlock(),
+                    Is.False);
 
                 fixture.Workload.Rebuild(
                     RenderingWorkloadMode.SharedMaterialPropertyBlocks,
@@ -66,10 +90,16 @@ namespace UnityCoreLab.Tests.PlayMode.RenderingPerformance
                     instances: 12,
                     renderers: 12,
                     materials: 1,
-                    explicitBatches: 0);
+                    explicitBatches: 0,
+                    explicitColors: 0);
 
                 yield return null;
                 Assert.That(fixture.WorkloadRoot.childCount, Is.EqualTo(12));
+                Assert.That(
+                    fixture.WorkloadRoot.GetChild(0)
+                        .GetComponent<MeshRenderer>()
+                        .HasPropertyBlock(),
+                    Is.True);
 
                 fixture.Workload.Rebuild(
                     RenderingWorkloadMode.ExplicitGpuInstancing,
@@ -81,7 +111,8 @@ namespace UnityCoreLab.Tests.PlayMode.RenderingPerformance
                     instances: 2050,
                     renderers: 0,
                     materials: 1,
-                    explicitBatches: 3);
+                    explicitBatches: 3,
+                    explicitColors: 2050);
 
                 yield return null;
                 Assert.That(fixture.WorkloadRoot.childCount, Is.Zero);
@@ -96,7 +127,8 @@ namespace UnityCoreLab.Tests.PlayMode.RenderingPerformance
             int instances,
             int renderers,
             int materials,
-            int explicitBatches)
+            int explicitBatches,
+            int explicitColors)
         {
             Assert.That(snapshot.Mode, Is.EqualTo(mode));
             Assert.That(snapshot.InstanceCount, Is.EqualTo(instances));
@@ -104,13 +136,15 @@ namespace UnityCoreLab.Tests.PlayMode.RenderingPerformance
             Assert.That(snapshot.MaterialCount, Is.EqualTo(materials));
             Assert.That(snapshot.ExplicitInstancedBatchCount,
                 Is.EqualTo(explicitBatches));
+            Assert.That(snapshot.ExplicitColorCount, Is.EqualTo(explicitColors));
         }
 
         private sealed class WorkloadFixture : IDisposable
         {
             private readonly GameObject _meshSource;
             private readonly GameObject _root;
-            private readonly Material _material;
+            private readonly Material _rendererMaterial;
+            private readonly Material _instancedMaterial;
 
             public WorkloadFixture()
             {
@@ -123,10 +157,21 @@ namespace UnityCoreLab.Tests.PlayMode.RenderingPerformance
                     shader = Shader.Find("Unlit/Color");
                 }
 
-                _material = new Material(shader);
+                _rendererMaterial = new Material(shader);
+                Shader instancedShader = Shader.Find(
+                    "UnityCoreLab/Rendering/InstancedColor");
+                Assert.That(instancedShader, Is.Not.Null);
+                _instancedMaterial = new Material(instancedShader)
+                {
+                    enableInstancing = true
+                };
                 _root = new GameObject("Rendering Workload Test Root");
                 WorkloadRoot = _root.transform;
-                Workload = new RenderingWorkload(mesh, _material, WorkloadRoot);
+                Workload = new RenderingWorkload(
+                    mesh,
+                    _rendererMaterial,
+                    _instancedMaterial,
+                    WorkloadRoot);
             }
 
             public RenderingWorkload Workload { get; }
@@ -136,7 +181,8 @@ namespace UnityCoreLab.Tests.PlayMode.RenderingPerformance
             public void Dispose()
             {
                 Workload.Dispose();
-                UnityEngine.Object.Destroy(_material);
+                UnityEngine.Object.Destroy(_rendererMaterial);
+                UnityEngine.Object.Destroy(_instancedMaterial);
                 UnityEngine.Object.Destroy(_meshSource);
                 UnityEngine.Object.Destroy(_root);
             }

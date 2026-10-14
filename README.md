@@ -115,12 +115,20 @@ reentrant mutation from change callbacks. Stage 06.2 turns committed navigation
 changes into asynchronously created, owned Unity UI views. It covers and resumes
 views by layer, cancels pending creation on Back, rejects late completion from a
 removed route, and guarantees Exit/Dispose for created instances.
+Stage 06.3 adds an immutable route-to-asset registry and real Resources prefabs.
+Each instantiated view retains a shared prefab lease and releases it during
+Dispose, connecting navigation, asynchronous creation, and resource ownership.
+Because Unity cannot individually unload a GameObject prefab with
+`Resources.UnloadAsset`, the demo distinguishes deterministic lease release
+from physical memory reclamation, which requires a later, deliberately
+scheduled `Resources.UnloadUnusedAssets` sweep.
 
 - Runtime code: `Project/Assets/Runtime/UiNavigation`
 - Navigation scene: `Project/Assets/Samples/UiNavigation/UiNavigationDemo.unity`
 - View lifecycle scene: `Project/Assets/Samples/UiNavigation/UiViewLifecycleDemo.unity`
+- Prefab factory scene: `Project/Assets/Samples/UiNavigation/UiPrefabFactoryDemo.unity`
 - EditMode tests: `Project/Assets/Tests/EditMode/UiNavigation`
-- PlayMode test: `Project/Assets/Tests/PlayMode/UiNavigationDemoPlayModeTests.cs`
+- PlayMode tests: `Project/Assets/Tests/PlayMode`
 - Design note: `docs/06-ui-navigation-and-lifecycle.md`
 
 ## Roadmap

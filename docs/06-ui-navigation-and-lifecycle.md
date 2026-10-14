@@ -89,3 +89,52 @@ sample factory adapts UniTask PlayerLoop work to that boundary and constructs
 Unity objects only on the main thread. A production project can replace the
 factory with Addressables or a project-specific UI asset service without
 changing navigation or lifecycle policy.
+
+## 06.3 Route registry and leased prefab factory
+
+The 06.2 programmatic factory is useful for isolating lifecycle behavior, but a
+project normally resolves navigation routes to authored prefabs. 06.3 keeps the
+same `IAsyncUiViewFactory` boundary and adds three replaceable pieces:
+
+- `UiRouteViewRegistry` is an immutable, engine-independent mapping from
+  `(layer, route ID)` to an asset key;
+- `ResourcesPrefabUiViewFactory` resolves the key and acquires the prefab
+  through the existing shared asset store;
+- `PrefabUiViewBehaviour` contains only prefab presentation behavior while a
+  wrapper owns the instantiated GameObject and the prefab asset lease.
+
+Layer belongs to route identity. `Screen:Settings` and `Modal:Settings` may map
+to different prefabs, while duplicate registration of the exact same route is
+rejected at startup. Missing mappings fail the corresponding view lifecycle
+explicitly instead of silently constructing a fallback UI.
+
+One view instance owns one `AssetLease<GameObject>`. Covered screens retain both
+their instance and lease so they can resume without another load. On permanent
+close, the wrapper destroys the instance and disposes the lease. The shared
+store forgets the prefab after the final lease is released. This keeps instance
+lifetime and source-asset ownership related without treating them as the same
+object.
+
+There is an important Resources-specific boundary here: Unity rejects
+`Resources.UnloadAsset` for `GameObject` prefab assets. Therefore
+`ResourcesPrefabUniTaskAssetProvider.Unload` records that the final logical
+lease was released but does not pretend that one prefab was physically
+unloaded. A production Resources integration schedules the global
+`Resources.UnloadUnusedAssets` sweep at a controlled loading/scene transition,
+after unused instances have been destroyed. An Addressables implementation can
+instead retain and release the exact load handle. The navigation and lifecycle
+layers do not change for either policy.
+
+Open
+`Project/Assets/Samples/UiNavigation/UiPrefabFactoryDemo.unity` and enter Play
+Mode. Push screens and modals while observing load requests, currently loaded
+prefabs tracked by the shared store, live instances, and lease release count.
+Back should close the top view, destroy its instance, release its lease, remove
+the prefab from the store after its final owner, and resume the covered view
+without loading it again.
+
+The included editor command
+`Unity Core Lab/Samples/Rebuild UI Prefab Factory Demo` regenerates all six
+sample prefabs and the demo scene. Resources is intentionally used as a small,
+self-contained adapter; replacing it with Addressables changes the factory and
+asset provider, not navigation or lifecycle policy.

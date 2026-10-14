@@ -138,3 +138,49 @@ The included editor command
 sample prefabs and the demo scene. Resources is intentionally used as a small,
 self-contained adapter; replacing it with Addressables changes the factory and
 asset provider, not navigation or lifecycle policy.
+
+## 06.4 Presenter and explicit content states
+
+Navigation and view ownership do not answer where UI decisions belong. Putting
+loading, retry, empty-result and error rules directly in a `MonoBehaviour`
+makes those rules difficult to test and encourages every screen to invent a
+different state model. 06.4 introduces an engine-independent presentation
+boundary under `Runtime/UiPresentation`:
+
+- `IUiContentSource<TItem>` owns asynchronous data acquisition;
+- `IUiContentView<TItem>` emits refresh intent and renders a snapshot;
+- `UiContentPresenter<TItem>` owns request lifetime and state transitions;
+- `UiContentSnapshot<TItem>` is an immutable Loading, Content, Empty, or Error
+  value consumed by the View.
+
+The View is deliberately passive. It does not call a service, catch domain
+exceptions, decide whether zero items means Empty, or keep its own request
+version. Its only output is `RefreshRequested`; its only input is `Render`.
+This makes the same Presenter testable without loading a Unity scene.
+
+Every refresh receives a monotonically increasing revision and its own
+`CancellationTokenSource`. Starting a newer refresh cancels the previous one.
+Cancellation alone is not treated as proof that an underlying operation really
+stopped, so a result is rendered only when its request is still the current
+request. A data source that ignores cancellation therefore cannot overwrite a
+newer result. Disposing the Presenter cancels the active request, detaches the
+View event, and rejects every later completion.
+
+The Presenter uses ordinary `Task` and has no Unity reference. It is intended
+to be created and refreshed from the UI owner context; normal `await` then
+returns rendering to Unity's captured synchronization context. A data adapter
+that deliberately suppresses context capture must marshal its completion back
+to the UI context before touching a Unity View.
+
+Open `Project/Assets/Samples/UiPresentation/UiPresenterDemo.unity` and enter
+Play Mode. The right side is a real uGUI View; the left side controls its sample
+source. Exercise these paths:
+
+1. load Content, Empty, and Error and observe one explicit state per result;
+2. start a slow request, then immediately load Content and observe cancellation
+   plus a newer revision;
+3. start a slow request and dispose the Presenter; the View becomes inactive
+   and receives no late render;
+4. recreate the Presenter and observe that a new owner starts at revision 1;
+5. use the View's own refresh button to verify that it emits intent without
+   loading data itself.

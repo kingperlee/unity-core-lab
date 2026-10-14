@@ -122,18 +122,24 @@ Because Unity cannot individually unload a GameObject prefab with
 `Resources.UnloadAsset`, the demo distinguishes deterministic lease release
 from physical memory reclamation, which requires a later, deliberately
 scheduled `Resources.UnloadUnusedAssets` sweep.
+Stage 06.4 separates presentation decisions from uGUI. A generic, engine-free
+Presenter maps asynchronous data into immutable Loading, Content, Empty, and
+Error snapshots, cancels superseded requests, ignores stale completion, and
+detaches from its passive View on disposal.
 
 - Runtime code: `Project/Assets/Runtime/UiNavigation`
+- Presentation runtime: `Project/Assets/Runtime/UiPresentation`
 - Navigation scene: `Project/Assets/Samples/UiNavigation/UiNavigationDemo.unity`
 - View lifecycle scene: `Project/Assets/Samples/UiNavigation/UiViewLifecycleDemo.unity`
 - Prefab factory scene: `Project/Assets/Samples/UiNavigation/UiPrefabFactoryDemo.unity`
+- Presenter scene: `Project/Assets/Samples/UiPresentation/UiPresenterDemo.unity`
 - EditMode tests: `Project/Assets/Tests/EditMode/UiNavigation`
 - PlayMode tests: `Project/Assets/Tests/PlayMode`
 - Design note: `docs/06-ui-navigation-and-lifecycle.md`
 
 ## Roadmap
 
-- Presenter binding, modal policy, and virtualized lists
+- Modal policy and virtualized lists
 - Mobile-device rendering case studies
 - Persistent incident handoff and real Android/iOS crash-SDK adapters
 

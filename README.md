@@ -94,7 +94,10 @@ onto the main-thread diagnostic history. The fifth stage adds a bounded FIFO
 outbox with one in-flight report, explicit retryable and permanent outcomes,
 capped exponential backoff, attempt limits, and observable rejection and
 delivery statistics. Transport remains simulated so the retry policy can be
-tested without external services or credentials.
+tested without external services or credentials. The sixth stage models
+previous-session native-crash and ANR handoff through a replaceable platform
+source, bounded next-launch import, acknowledgement, duplicate suppression,
+and safe in-memory artifacts that never crash or freeze the demo process.
 
 - Runtime code: `Project/Assets/Runtime/Diagnostics`
 - Interactive scene: `Project/Assets/Samples/RuntimeDiagnostics/RuntimeDiagnosticsDemo.unity`
@@ -105,6 +108,6 @@ tested without external services or credentials.
 ## Roadmap
 
 - Mobile-device rendering case studies
-- Platform crash/ANR adapters
+- Persistent incident handoff and real Android/iOS crash-SDK adapters
 
 Copyright © 2026 Jiangbo Li. All rights reserved.

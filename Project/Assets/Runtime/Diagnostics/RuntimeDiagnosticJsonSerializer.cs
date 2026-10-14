@@ -276,6 +276,47 @@ namespace UnityCoreLab.Diagnostics
                 indented);
             AppendObjectEnd(builder, 1, indented);
 
+            PlatformIncidentImportStatistics platformIncident =
+                report.PlatformIncidentStatistics;
+            AppendPropertyPrefix(
+                builder,
+                "platformIncidentStatistics",
+                1,
+                indented);
+            AppendObjectStart(builder);
+            AppendNumberProperty(
+                builder,
+                "importedCount",
+                platformIncident.ImportedCount,
+                2,
+                indented,
+                first: true);
+            AppendNumberProperty(
+                builder,
+                "duplicateCount",
+                platformIncident.DuplicateCount,
+                2,
+                indented);
+            AppendNumberProperty(
+                builder,
+                "sourceReadFailureCount",
+                platformIncident.SourceReadFailureCount,
+                2,
+                indented);
+            AppendNumberProperty(
+                builder,
+                "acknowledgementFailureCount",
+                platformIncident.AcknowledgementFailureCount,
+                2,
+                indented);
+            AppendNumberProperty(
+                builder,
+                "truncatedCount",
+                platformIncident.TruncatedCount,
+                2,
+                indented);
+            AppendObjectEnd(builder, 1, indented);
+
             AppendPropertyPrefix(builder, "eventStorage", 1, indented);
             AppendObjectStart(builder);
             AppendNumberProperty(

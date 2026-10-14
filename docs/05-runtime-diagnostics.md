@@ -203,3 +203,40 @@ attempt exhaustion, payload and capacity rejection, and invalid state
 transitions. The PlayMode test verifies that the Unity demo queues its current
 snapshot, enforces retry delay, completes a later attempt, and serializes the
 delivery statistics.
+
+## 05.6 Previous-session platform incident handoff
+
+A managed Unity callback is not a reliable place to finish a native-crash or
+ANR report. A native crash can terminate the process before managed cleanup
+runs, while an ANR means the main thread may be unable to execute the very code
+that would create or upload a report. This stage therefore models a
+next-healthy-launch handoff:
+
+1. native platform code or a crash SDK retains a small incident artifact
+   outside the failed managed execution path;
+2. `IPlatformIncidentSource` exposes the oldest retained artifact without
+   deleting it;
+3. `PlatformIncidentImporter` copies at most four artifacts per action into
+   the bounded diagnostic event history;
+4. the source is acknowledged only after the event has been retained;
+5. a bounded incident-ID history prevents an acknowledgement failure from
+   duplicating the same event on the next import attempt.
+
+Native crashes and ANRs are recorded as distinct critical categories because
+their capture mechanisms and remediation differ. Each imported event preserves
+the external incident ID, source, original Unix timestamp, summary, and bounded
+details. Report statistics expose imported records, duplicates, source-read
+failures, acknowledgement failures, and truncation.
+
+The scene uses `BufferedPlatformIncidentSource`, an eight-slot in-memory test
+source. Its two simulation buttons create records representing evidence from a
+previous run; they do not invoke a native signal, deadlock the main thread, or
+claim to reproduce an operating-system ANR. `Import pending platform artifacts`
+then exercises the same interface that a Bugly, Crashlytics, Sentry, Android
+tombstone, or iOS crash-report adapter could implement.
+
+The in-memory source is lost when the process exits. A production adapter must
+persist its minimal handoff atomically, obey the signal-safety and privacy
+constraints of the target platform, and acknowledge or delete it only after a
+durable report owns the evidence. Implementing those Android/iOS-specific
+adapters remains separate from this engine-independent contract.

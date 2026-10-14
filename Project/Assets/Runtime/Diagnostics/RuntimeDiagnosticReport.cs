@@ -22,6 +22,7 @@ namespace UnityCoreLab.Diagnostics
             ManagedMemoryStatistics memoryStatistics,
             RuntimeLogCaptureStatistics logCaptureStatistics,
             DiagnosticOutboxStatistics outboxStatistics,
+            PlatformIncidentImportStatistics platformIncidentStatistics,
             int eventCapacity,
             long overwrittenEventCount,
             RuntimeDiagnosticEvent[] events)
@@ -35,6 +36,7 @@ namespace UnityCoreLab.Diagnostics
             MemoryStatistics = memoryStatistics;
             LogCaptureStatistics = logCaptureStatistics;
             OutboxStatistics = outboxStatistics;
+            PlatformIncidentStatistics = platformIncidentStatistics;
             EventCapacity = eventCapacity;
             OverwrittenEventCount = overwrittenEventCount;
             _events = events;
@@ -59,6 +61,11 @@ namespace UnityCoreLab.Diagnostics
         public RuntimeLogCaptureStatistics LogCaptureStatistics { get; }
 
         public DiagnosticOutboxStatistics OutboxStatistics { get; }
+
+        public PlatformIncidentImportStatistics PlatformIncidentStatistics
+        {
+            get;
+        }
 
         public int EventCapacity { get; }
 
@@ -85,7 +92,8 @@ namespace UnityCoreLab.Diagnostics
             double capturedAtSeconds,
             ManagedMemoryMonitor memoryMonitor = null,
             RuntimeLogInbox logInbox = null,
-            RuntimeDiagnosticOutbox outbox = null)
+            RuntimeDiagnosticOutbox outbox = null,
+            PlatformIncidentImporter platformIncidentImporter = null)
         {
             if (events == null)
             {
@@ -129,6 +137,9 @@ namespace UnityCoreLab.Diagnostics
                     : default,
                 outbox != null
                     ? outbox.GetStatistics()
+                    : default,
+                platformIncidentImporter != null
+                    ? platformIncidentImporter.GetStatistics()
                     : default,
                 events.Capacity,
                 events.OverwrittenCount,

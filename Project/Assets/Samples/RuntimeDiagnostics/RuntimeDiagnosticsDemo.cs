@@ -26,6 +26,8 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
         public const int MaximumLogDrainPerFrame = 8;
         public const int DiagnosticOutboxCapacity = 4;
         public const int MaximumReportPayloadCharacters = 128 * 1024;
+        public const int PlatformIncidentSourceCapacity = 8;
+        public const int MaximumPlatformIncidentsPerImport = 4;
         private const int StartupWarmupFrames = 30;
         private const int ReportPreviewCharacterLimit = 1800;
         private const int MaximumInjectedAllocationKilobytes = 4096;
@@ -35,6 +37,9 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
         private const int MaximumDeliveryAttempts = 4;
         private const double InitialRetryDelaySeconds = 1d;
         private const double MaximumRetryDelaySeconds = 8d;
+        private const int RememberedPlatformIncidentCapacity = 16;
+        private const int MaximumIncidentSummaryCharacters = 256;
+        private const int MaximumIncidentDetailsCharacters = 1024;
 
         private static readonly ProfilerMarker InjectHitchMarker =
             new ProfilerMarker("UnityCoreLab.Diagnostics.InjectMainThreadHitch");
@@ -44,6 +49,8 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
         private ManagedMemoryMonitor _memoryMonitor;
         private RuntimeLogInbox _logInbox;
         private RuntimeDiagnosticOutbox _outbox;
+        private BufferedPlatformIncidentSource _platformIncidentSource;
+        private PlatformIncidentImporter _platformIncidentImporter;
         private ProfilerRecorder _gcAllocatedInFrameRecorder;
         private ProfilerRecorder _gcUsedMemoryRecorder;
         private ProfilerRecorder _gcReservedMemoryRecorder;
@@ -59,6 +66,7 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
         private string _latestReportPath;
         private string _reportStatus;
         private string _deliveryStatus;
+        private string _incidentStatus;
         private byte[] _managedAllocationProbe;
         private int _releaseManagedProbeFrame;
 
@@ -67,7 +75,9 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
             _hitchDetector != null &&
             _memoryMonitor != null &&
             _logInbox != null &&
-            _outbox != null;
+            _outbox != null &&
+            _platformIncidentSource != null &&
+            _platformIncidentImporter != null;
 
         public RuntimeDiagnosticBuffer Events => _events;
 
@@ -78,6 +88,12 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
         public RuntimeLogInbox LogInbox => _logInbox;
 
         public RuntimeDiagnosticOutbox Outbox => _outbox;
+
+        public BufferedPlatformIncidentSource PlatformIncidentSource =>
+            _platformIncidentSource;
+
+        public PlatformIncidentImporter PlatformIncidentImporter =>
+            _platformIncidentImporter;
 
         public string LatestReportJson => _latestReportJson;
 
@@ -105,6 +121,13 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
                     MaximumDeliveryAttempts,
                     InitialRetryDelaySeconds,
                     MaximumRetryDelaySeconds));
+            _platformIncidentSource = new BufferedPlatformIncidentSource(
+                PlatformIncidentSourceCapacity);
+            _platformIncidentImporter = new PlatformIncidentImporter(
+                _events,
+                RememberedPlatformIncidentCapacity,
+                MaximumIncidentSummaryCharacters,
+                MaximumIncidentDetailsCharacters);
             _sessionId = Guid.NewGuid().ToString("N");
             _warmupFramesRemaining = StartupWarmupFrames;
             StartMemoryCounters();
@@ -273,11 +296,14 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
             _memoryMonitor.ResetStatistics();
             _logInbox.Clear();
             _outbox.Clear();
+            _platformIncidentSource.Clear();
+            _platformIncidentImporter.ResetStatistics();
             _latestReportJson = null;
             _latestReportPreview = null;
             _latestReportPath = null;
             _reportStatus = null;
             _deliveryStatus = null;
+            _incidentStatus = null;
         }
 
         public RuntimeDiagnosticReport CaptureReport()
@@ -290,7 +316,8 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
                 Time.realtimeSinceStartupAsDouble,
                 _memoryMonitor,
                 _logInbox,
-                _outbox);
+                _outbox,
+                _platformIncidentImporter);
         }
 
         public string BuildReportJson()
@@ -390,6 +417,42 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
             return true;
         }
 
+        public bool SimulatePendingPlatformIncident(
+            PlatformIncidentKind kind,
+            long occurredAtUnixMilliseconds)
+        {
+            string summary = kind == PlatformIncidentKind.NativeCrash
+                ? "Native crash artifact retained after process termination."
+                : "ANR watchdog artifact retained while the main thread stalled.";
+            string details = kind == PlatformIncidentKind.NativeCrash
+                ? "Synthetic native signal and tombstone summary."
+                : "Synthetic watchdog main-thread stack summary.";
+            var incident = new PlatformIncidentRecord(
+                Guid.NewGuid().ToString("N"),
+                kind,
+                occurredAtUnixMilliseconds,
+                "SimulatedPlatformAdapter",
+                summary,
+                details);
+            bool accepted = _platformIncidentSource.TryEnqueue(incident);
+            _incidentStatus = accepted
+                ? $"Queued simulated previous-session {kind} artifact."
+                : "Platform incident source is full; artifact was rejected.";
+            return accepted;
+        }
+
+        public int ImportPendingPlatformIncidents(double timestampSeconds)
+        {
+            int imported = _platformIncidentImporter.ImportAvailable(
+                _platformIncidentSource,
+                timestampSeconds,
+                MaximumPlatformIncidentsPerImport);
+            _incidentStatus =
+                $"Imported {imported} platform incident(s); " +
+                $"{_platformIncidentSource.PendingCount} remain pending.";
+            return imported;
+        }
+
         private void OnGUI()
         {
             EnsureGuiStyles();
@@ -407,7 +470,7 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
 
             GUILayout.Label("Unity Core Lab", _titleStyle);
             GUILayout.Label(
-                "05.5 Diagnostic outbox and retry policy",
+                "05.6 Previous-session platform incident handoff",
                 _labelStyle);
             GUILayout.Space(8f);
             GUILayout.Label(
@@ -485,6 +548,21 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
                 $"rejected {delivery.RejectedCount}, next in {nextAttempt}",
                 _labelStyle);
 
+            PlatformIncidentImportStatistics incidentStatistics =
+                _platformIncidentImporter.GetStatistics();
+            GUILayout.Label(
+                $"Platform artifacts: {_platformIncidentSource.PendingCount}/" +
+                $"{_platformIncidentSource.Capacity} pending, imported " +
+                $"{incidentStatistics.ImportedCount}, duplicates " +
+                $"{incidentStatistics.DuplicateCount}",
+                _labelStyle);
+            GUILayout.Label(
+                $"Platform adapter failures: read " +
+                $"{incidentStatistics.SourceReadFailureCount}, acknowledge " +
+                $"{incidentStatistics.AcknowledgementFailureCount}, " +
+                $"truncated {incidentStatistics.TruncatedCount}",
+                _labelStyle);
+
             GUILayout.Space(12f);
             if (GUILayout.Button(
                     "Inject 80 ms main-thread stall",
@@ -538,6 +616,32 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
                     _buttonStyle))
             {
                 InjectLogBurst(80);
+            }
+
+            if (GUILayout.Button(
+                    "Simulate pending native-crash artifact",
+                    _buttonStyle))
+            {
+                SimulatePendingPlatformIncident(
+                    PlatformIncidentKind.NativeCrash,
+                    DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+            }
+
+            if (GUILayout.Button(
+                    "Simulate pending ANR artifact",
+                    _buttonStyle))
+            {
+                SimulatePendingPlatformIncident(
+                    PlatformIncidentKind.ApplicationNotResponding,
+                    DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+            }
+
+            if (GUILayout.Button(
+                    "Import pending platform artifacts",
+                    _buttonStyle))
+            {
+                ImportPendingPlatformIncidents(
+                    Time.realtimeSinceStartupAsDouble);
             }
 
             if (GUILayout.Button("Clear diagnostics", _buttonStyle))
@@ -602,6 +706,11 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
                 GUILayout.Label(_deliveryStatus, _labelStyle);
             }
 
+            if (!string.IsNullOrEmpty(_incidentStatus))
+            {
+                GUILayout.Label(_incidentStatus, _labelStyle);
+            }
+
             if (!string.IsNullOrEmpty(_latestReportPath))
             {
                 GUILayout.Label(
@@ -646,7 +755,9 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
                 "Threaded log callbacks only enqueue bounded text. Main-thread " +
                 "drain is capped at eight entries per frame. Delivery buttons " +
                 "exercise policy only: no network request or external upload " +
-                "is performed.",
+                "is performed. Platform incident buttons create safe records " +
+                "that represent evidence retained by native code or a crash " +
+                "SDK; they never crash or freeze this process.",
                 _labelStyle);
 
             GUILayout.EndScrollView();

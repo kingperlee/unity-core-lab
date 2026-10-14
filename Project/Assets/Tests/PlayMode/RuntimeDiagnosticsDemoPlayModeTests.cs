@@ -48,18 +48,38 @@ namespace UnityCoreLab.Tests.PlayMode
                 demo.Events[demo.Events.Count - 1].Category,
                 Is.EqualTo("UnityLog"));
 
+            Assert.That(
+                demo.SimulatePendingPlatformIncident(
+                    PlatformIncidentKind.NativeCrash,
+                    1700000000000L),
+                Is.True);
+            Assert.That(
+                demo.SimulatePendingPlatformIncident(
+                    PlatformIncidentKind.ApplicationNotResponding,
+                    1700000001000L),
+                Is.True);
+            Assert.That(demo.ImportPendingPlatformIncidents(3.5d),
+                Is.EqualTo(2));
+            Assert.That(demo.Events[demo.Events.Count - 2].Category,
+                Is.EqualTo("NativeCrash"));
+            Assert.That(demo.Events[demo.Events.Count - 1].Category,
+                Is.EqualTo("ANR"));
+
             RuntimeDiagnosticReport report = demo.CaptureReport();
             string json = demo.BuildReportJson();
-            Assert.That(report.EventCount, Is.EqualTo(4));
+            Assert.That(report.EventCount, Is.EqualTo(6));
             Assert.That(report.Context.SessionId, Is.Not.EqualTo("Unknown"));
             Assert.That(report.MemoryStatistics.AllocationSpikeCount,
                 Is.EqualTo(1));
             Assert.That(report.LogCaptureStatistics.DrainedCount,
                 Is.EqualTo(1));
+            Assert.That(report.PlatformIncidentStatistics.ImportedCount,
+                Is.EqualTo(2));
             StringAssert.Contains("\"schemaVersion\": 1", json);
             StringAssert.Contains("\"events\":", json);
             StringAssert.Contains("\"memoryStatistics\":", json);
             StringAssert.Contains("\"deliveryStatistics\":", json);
+            StringAssert.Contains("\"platformIncidentStatistics\":", json);
             Assert.That(demo.LatestReportJson, Is.EqualTo(json));
 
             Assert.That(
@@ -90,6 +110,10 @@ namespace UnityCoreLab.Tests.PlayMode
             Assert.That(demo.MemoryMonitor.ObservedSampleCount, Is.Zero);
             Assert.That(demo.LogInbox.GetStatistics().ReceivedCount, Is.Zero);
             Assert.That(demo.Outbox.GetStatistics().AcceptedCount, Is.Zero);
+            Assert.That(
+                demo.PlatformIncidentImporter.GetStatistics().ImportedCount,
+                Is.Zero);
+            Assert.That(demo.PlatformIncidentSource.PendingCount, Is.Zero);
             Assert.That(demo.LatestReportJson, Is.Null);
 
             Object.Destroy(root);

@@ -163,3 +163,43 @@ Reference:
 
 - Unity `Application.logMessageReceivedThreaded`:
   https://docs.unity3d.com/2022.3/Documentation/ScriptReference/Application-logMessageReceivedThreaded.html
+
+## 05.5 Bounded diagnostic outbox and retry policy
+
+The fifth stage separates report creation from report delivery. A captured
+JSON report enters `RuntimeDiagnosticOutbox`, which owns a deterministic FIFO
+state machine rather than performing network work itself. This makes queueing,
+backoff, terminal failure, and telemetry independently testable.
+
+The sample uses these constraints:
+
+- four pending slots with a `128 KB` payload limit per report;
+- one in-flight head report at a time, preserving FIFO delivery order;
+- full queues and oversized payloads reject the new report rather than
+  overwriting unsent evidence;
+- success removes the head report;
+- permanent failure removes the head report without retrying;
+- retryable failure keeps the head report and schedules its next attempt;
+- at most four attempts, with deterministic delays of `1`, `2`, and `4`
+  seconds before the remaining attempts;
+- accepted, delivered, terminally failed, rejected, and retry counters are
+  included in the next diagnostic snapshot.
+
+The demo exposes buttons that queue the current report and simulate success,
+retryable failure, or permanent failure. A retry attempted before its scheduled
+time is refused, so the UI can demonstrate that backoff is policy rather than
+an arbitrary delay inside a coroutine.
+
+This outbox is intentionally memory-only: quitting or restarting the process
+loses its contents. It contains no HTTP client, endpoint, authentication token,
+background service, or automatic upload. A production implementation would
+persist encrypted records, add randomized jitter, respond to connectivity and
+application-lifecycle changes, redact sensitive fields, obtain appropriate
+consent, and delegate transport to a replaceable adapter. Those concerns are
+kept outside this lab's deterministic retry state machine.
+
+Run the EditMode tests to verify capped exponential backoff, FIFO ordering,
+attempt exhaustion, payload and capacity rejection, and invalid state
+transitions. The PlayMode test verifies that the Unity demo queues its current
+snapshot, enforces retry delay, completes a later attempt, and serializes the
+delivery statistics.

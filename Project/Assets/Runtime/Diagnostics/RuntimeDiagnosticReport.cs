@@ -21,6 +21,7 @@ namespace UnityCoreLab.Diagnostics
             double worstFrameMilliseconds,
             ManagedMemoryStatistics memoryStatistics,
             RuntimeLogCaptureStatistics logCaptureStatistics,
+            DiagnosticOutboxStatistics outboxStatistics,
             int eventCapacity,
             long overwrittenEventCount,
             RuntimeDiagnosticEvent[] events)
@@ -33,6 +34,7 @@ namespace UnityCoreLab.Diagnostics
             WorstFrameMilliseconds = worstFrameMilliseconds;
             MemoryStatistics = memoryStatistics;
             LogCaptureStatistics = logCaptureStatistics;
+            OutboxStatistics = outboxStatistics;
             EventCapacity = eventCapacity;
             OverwrittenEventCount = overwrittenEventCount;
             _events = events;
@@ -55,6 +57,8 @@ namespace UnityCoreLab.Diagnostics
         public ManagedMemoryStatistics MemoryStatistics { get; }
 
         public RuntimeLogCaptureStatistics LogCaptureStatistics { get; }
+
+        public DiagnosticOutboxStatistics OutboxStatistics { get; }
 
         public int EventCapacity { get; }
 
@@ -80,7 +84,8 @@ namespace UnityCoreLab.Diagnostics
             DateTime generatedAtUtc,
             double capturedAtSeconds,
             ManagedMemoryMonitor memoryMonitor = null,
-            RuntimeLogInbox logInbox = null)
+            RuntimeLogInbox logInbox = null,
+            RuntimeDiagnosticOutbox outbox = null)
         {
             if (events == null)
             {
@@ -121,6 +126,9 @@ namespace UnityCoreLab.Diagnostics
                 new ManagedMemoryStatistics(memoryMonitor),
                 logInbox != null
                     ? logInbox.GetStatistics()
+                    : default,
+                outbox != null
+                    ? outbox.GetStatistics()
                     : default,
                 events.Capacity,
                 events.OverwrittenCount,

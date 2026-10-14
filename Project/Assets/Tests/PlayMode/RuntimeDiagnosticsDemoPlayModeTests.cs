@@ -59,13 +59,37 @@ namespace UnityCoreLab.Tests.PlayMode
             StringAssert.Contains("\"schemaVersion\": 1", json);
             StringAssert.Contains("\"events\":", json);
             StringAssert.Contains("\"memoryStatistics\":", json);
+            StringAssert.Contains("\"deliveryStatistics\":", json);
             Assert.That(demo.LatestReportJson, Is.EqualTo(json));
+
+            Assert.That(
+                demo.QueueCurrentReport(4d, out long reportId),
+                Is.EqualTo(DiagnosticEnqueueResult.Accepted));
+            Assert.That(reportId, Is.GreaterThan(0));
+            Assert.That(
+                demo.SimulateNextDelivery(
+                    DiagnosticDeliveryOutcome.RetryableFailure,
+                    4d),
+                Is.True);
+            Assert.That(
+                demo.SimulateNextDelivery(
+                    DiagnosticDeliveryOutcome.Succeeded,
+                    4.5d),
+                Is.False);
+            Assert.That(
+                demo.SimulateNextDelivery(
+                    DiagnosticDeliveryOutcome.Succeeded,
+                    5d),
+                Is.True);
+            Assert.That(demo.Outbox.GetStatistics().DeliveredCount,
+                Is.EqualTo(1));
 
             demo.ClearDiagnostics();
             Assert.That(demo.Events.Count, Is.Zero);
             Assert.That(demo.HitchDetector.DetectedHitchCount, Is.Zero);
             Assert.That(demo.MemoryMonitor.ObservedSampleCount, Is.Zero);
             Assert.That(demo.LogInbox.GetStatistics().ReceivedCount, Is.Zero);
+            Assert.That(demo.Outbox.GetStatistics().AcceptedCount, Is.Zero);
             Assert.That(demo.LatestReportJson, Is.Null);
 
             Object.Destroy(root);

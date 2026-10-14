@@ -464,5 +464,146 @@ namespace UnityCoreLab.Tests.EditMode.RuntimeDiagnostics
             StringAssert.Contains("\"logCaptureStatistics\":", json);
             StringAssert.Contains("\"droppedCount\": 1", json);
         }
+
+        [Test]
+        public void UploadPolicy_UsesCappedExponentialBackoff()
+        {
+            var policy = new DiagnosticUploadPolicy(
+                maximumAttempts: 5,
+                initialRetryDelaySeconds: 1d,
+                maximumRetryDelaySeconds: 4d);
+
+            Assert.That(policy.GetRetryDelaySeconds(1), Is.EqualTo(1d));
+            Assert.That(policy.GetRetryDelaySeconds(2), Is.EqualTo(2d));
+            Assert.That(policy.GetRetryDelaySeconds(3), Is.EqualTo(4d));
+            Assert.That(policy.GetRetryDelaySeconds(4), Is.EqualTo(4d));
+        }
+
+        [Test]
+        public void Outbox_RetriesHeadAndPreservesFifoDelivery()
+        {
+            var outbox = new RuntimeDiagnosticOutbox(
+                capacity: 2,
+                maximumPayloadCharacters: 32,
+                policy: new DiagnosticUploadPolicy(3, 1d, 4d));
+
+            Assert.That(
+                outbox.Enqueue("Report A", 0d, out long firstId),
+                Is.EqualTo(DiagnosticEnqueueResult.Accepted));
+            Assert.That(
+                outbox.Enqueue("Report B", 0d, out long secondId),
+                Is.EqualTo(DiagnosticEnqueueResult.Accepted));
+            Assert.That(
+                outbox.Enqueue("Report C", 0d, out long rejectedId),
+                Is.EqualTo(DiagnosticEnqueueResult.OutboxFull));
+            Assert.That(rejectedId, Is.Zero);
+
+            Assert.That(
+                outbox.TryBeginNextAttempt(
+                    0d,
+                    out DiagnosticUploadAttempt firstAttempt),
+                Is.True);
+            Assert.That(firstAttempt.ReportId, Is.EqualTo(firstId));
+            Assert.That(firstAttempt.AttemptNumber, Is.EqualTo(1));
+            Assert.That(outbox.TryBeginNextAttempt(0d, out _), Is.False);
+            outbox.CompleteAttempt(
+                firstId,
+                DiagnosticDeliveryOutcome.RetryableFailure,
+                0d);
+
+            Assert.That(outbox.TryBeginNextAttempt(0.5d, out _), Is.False);
+            Assert.That(
+                outbox.TryGetDelayUntilNextAttempt(0.5d, out double delay),
+                Is.True);
+            Assert.That(delay, Is.EqualTo(0.5d));
+            Assert.That(
+                outbox.TryBeginNextAttempt(
+                    1d,
+                    out DiagnosticUploadAttempt retryAttempt),
+                Is.True);
+            Assert.That(retryAttempt.ReportId, Is.EqualTo(firstId));
+            Assert.That(retryAttempt.AttemptNumber, Is.EqualTo(2));
+            outbox.CompleteAttempt(
+                firstId,
+                DiagnosticDeliveryOutcome.Succeeded,
+                1d);
+
+            Assert.That(
+                outbox.TryBeginNextAttempt(
+                    1d,
+                    out DiagnosticUploadAttempt secondAttempt),
+                Is.True);
+            Assert.That(secondAttempt.ReportId, Is.EqualTo(secondId));
+            outbox.CompleteAttempt(
+                secondId,
+                DiagnosticDeliveryOutcome.PermanentFailure,
+                1d);
+
+            DiagnosticOutboxStatistics statistics = outbox.GetStatistics();
+            Assert.That(statistics.PendingCount, Is.Zero);
+            Assert.That(statistics.AcceptedCount, Is.EqualTo(2));
+            Assert.That(statistics.DeliveredCount, Is.EqualTo(1));
+            Assert.That(statistics.TerminalFailureCount, Is.EqualTo(1));
+            Assert.That(statistics.RejectedCount, Is.EqualTo(1));
+            Assert.That(statistics.RetryScheduledCount, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Outbox_StopsAfterMaximumAttemptsAndRejectsLargePayload()
+        {
+            var outbox = new RuntimeDiagnosticOutbox(
+                capacity: 1,
+                maximumPayloadCharacters: 8,
+                policy: new DiagnosticUploadPolicy(2, 1d, 2d));
+
+            Assert.That(
+                outbox.Enqueue("123456789", 0d, out _),
+                Is.EqualTo(DiagnosticEnqueueResult.PayloadTooLarge));
+            Assert.That(
+                outbox.Enqueue("Report", 0d, out long reportId),
+                Is.EqualTo(DiagnosticEnqueueResult.Accepted));
+            Assert.That(outbox.TryBeginNextAttempt(0d, out _), Is.True);
+            outbox.CompleteAttempt(
+                reportId,
+                DiagnosticDeliveryOutcome.RetryableFailure,
+                0d);
+            Assert.That(outbox.TryBeginNextAttempt(1d, out _), Is.True);
+            outbox.CompleteAttempt(
+                reportId,
+                DiagnosticDeliveryOutcome.RetryableFailure,
+                1d);
+
+            DiagnosticOutboxStatistics statistics = outbox.GetStatistics();
+            Assert.That(statistics.PendingCount, Is.Zero);
+            Assert.That(statistics.TerminalFailureCount, Is.EqualTo(1));
+            Assert.That(statistics.RejectedCount, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Outbox_RejectsInvalidStateTransitions()
+        {
+            var outbox = new RuntimeDiagnosticOutbox(
+                1,
+                32,
+                new DiagnosticUploadPolicy(2, 1d, 2d));
+            outbox.Enqueue("Report", 1d, out long reportId);
+
+            Assert.Throws<InvalidOperationException>(() =>
+                outbox.CompleteAttempt(
+                    reportId,
+                    DiagnosticDeliveryOutcome.Succeeded,
+                    1d));
+            outbox.TryBeginNextAttempt(1d, out _);
+            Assert.Throws<InvalidOperationException>(() =>
+                outbox.CompleteAttempt(
+                    reportId + 1,
+                    DiagnosticDeliveryOutcome.Succeeded,
+                    1d));
+            Assert.Throws<ArgumentException>(() =>
+                outbox.CompleteAttempt(
+                    reportId,
+                    DiagnosticDeliveryOutcome.Succeeded,
+                    0.5d));
+        }
     }
 }

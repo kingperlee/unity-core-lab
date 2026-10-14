@@ -24,12 +24,17 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
         public const double MemoryReportCooldownSeconds = 1d;
         public const int LogInboxCapacity = 64;
         public const int MaximumLogDrainPerFrame = 8;
+        public const int DiagnosticOutboxCapacity = 4;
+        public const int MaximumReportPayloadCharacters = 128 * 1024;
         private const int StartupWarmupFrames = 30;
         private const int ReportPreviewCharacterLimit = 1800;
         private const int MaximumInjectedAllocationKilobytes = 4096;
         private const int MaximumLogMessageCharacters = 1024;
         private const int MaximumLogStackTraceCharacters = 2048;
         private const int MaximumInjectedLogBurst = 256;
+        private const int MaximumDeliveryAttempts = 4;
+        private const double InitialRetryDelaySeconds = 1d;
+        private const double MaximumRetryDelaySeconds = 8d;
 
         private static readonly ProfilerMarker InjectHitchMarker =
             new ProfilerMarker("UnityCoreLab.Diagnostics.InjectMainThreadHitch");
@@ -38,6 +43,7 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
         private FrameHitchDetector _hitchDetector;
         private ManagedMemoryMonitor _memoryMonitor;
         private RuntimeLogInbox _logInbox;
+        private RuntimeDiagnosticOutbox _outbox;
         private ProfilerRecorder _gcAllocatedInFrameRecorder;
         private ProfilerRecorder _gcUsedMemoryRecorder;
         private ProfilerRecorder _gcReservedMemoryRecorder;
@@ -52,6 +58,7 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
         private string _latestReportPreview;
         private string _latestReportPath;
         private string _reportStatus;
+        private string _deliveryStatus;
         private byte[] _managedAllocationProbe;
         private int _releaseManagedProbeFrame;
 
@@ -59,7 +66,8 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
             _events != null &&
             _hitchDetector != null &&
             _memoryMonitor != null &&
-            _logInbox != null;
+            _logInbox != null &&
+            _outbox != null;
 
         public RuntimeDiagnosticBuffer Events => _events;
 
@@ -68,6 +76,8 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
         public ManagedMemoryMonitor MemoryMonitor => _memoryMonitor;
 
         public RuntimeLogInbox LogInbox => _logInbox;
+
+        public RuntimeDiagnosticOutbox Outbox => _outbox;
 
         public string LatestReportJson => _latestReportJson;
 
@@ -88,6 +98,13 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
                 LogInboxCapacity,
                 MaximumLogMessageCharacters,
                 MaximumLogStackTraceCharacters);
+            _outbox = new RuntimeDiagnosticOutbox(
+                DiagnosticOutboxCapacity,
+                MaximumReportPayloadCharacters,
+                new DiagnosticUploadPolicy(
+                    MaximumDeliveryAttempts,
+                    InitialRetryDelaySeconds,
+                    MaximumRetryDelaySeconds));
             _sessionId = Guid.NewGuid().ToString("N");
             _warmupFramesRemaining = StartupWarmupFrames;
             StartMemoryCounters();
@@ -255,10 +272,12 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
             _hitchDetector.ResetStatistics();
             _memoryMonitor.ResetStatistics();
             _logInbox.Clear();
+            _outbox.Clear();
             _latestReportJson = null;
             _latestReportPreview = null;
             _latestReportPath = null;
             _reportStatus = null;
+            _deliveryStatus = null;
         }
 
         public RuntimeDiagnosticReport CaptureReport()
@@ -270,7 +289,8 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
                 DateTime.UtcNow,
                 Time.realtimeSinceStartupAsDouble,
                 _memoryMonitor,
-                _logInbox);
+                _logInbox,
+                _outbox);
         }
 
         public string BuildReportJson()
@@ -332,6 +352,44 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
             }
         }
 
+        public DiagnosticEnqueueResult QueueCurrentReport(
+            double timestampSeconds,
+            out long reportId)
+        {
+            string json = BuildReportJson();
+            DiagnosticEnqueueResult result = _outbox.Enqueue(
+                json,
+                timestampSeconds,
+                out reportId);
+            _deliveryStatus = result == DiagnosticEnqueueResult.Accepted
+                ? $"Queued report #{reportId}."
+                : $"Report rejected: {result}.";
+            return result;
+        }
+
+        public bool SimulateNextDelivery(
+            DiagnosticDeliveryOutcome outcome,
+            double timestampSeconds)
+        {
+            if (!_outbox.TryBeginNextAttempt(
+                    timestampSeconds,
+                    out DiagnosticUploadAttempt attempt))
+            {
+                _deliveryStatus =
+                    "No report is ready; the queue may be empty or backing off.";
+                return false;
+            }
+
+            _outbox.CompleteAttempt(
+                attempt.ReportId,
+                outcome,
+                timestampSeconds);
+            _deliveryStatus =
+                $"Report #{attempt.ReportId} attempt " +
+                $"{attempt.AttemptNumber}: {outcome}.";
+            return true;
+        }
+
         private void OnGUI()
         {
             EnsureGuiStyles();
@@ -349,7 +407,7 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
 
             GUILayout.Label("Unity Core Lab", _titleStyle);
             GUILayout.Label(
-                "05.4 Bounded, thread-safe Unity log capture",
+                "05.5 Diagnostic outbox and retry policy",
                 _labelStyle);
             GUILayout.Space(8f);
             GUILayout.Label(
@@ -409,6 +467,22 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
             GUILayout.Label(
                 $"Log pressure: dropped {logStatistics.DroppedCount}, " +
                 $"truncated {logStatistics.TruncatedCount}",
+                _labelStyle);
+
+            DiagnosticOutboxStatistics delivery = _outbox.GetStatistics();
+            string nextAttempt = _outbox.TryGetDelayUntilNextAttempt(
+                Time.realtimeSinceStartupAsDouble,
+                out double delaySeconds)
+                ? $"{delaySeconds:F1} s"
+                : "Unavailable";
+            GUILayout.Label(
+                $"Report outbox: {delivery.PendingCount}/" +
+                $"{delivery.Capacity}, delivered {delivery.DeliveredCount}, " +
+                $"terminal failures {delivery.TerminalFailureCount}",
+                _labelStyle);
+            GUILayout.Label(
+                $"Delivery retries: {delivery.RetryScheduledCount}, " +
+                $"rejected {delivery.RejectedCount}, next in {nextAttempt}",
                 _labelStyle);
 
             GUILayout.Space(12f);
@@ -484,9 +558,48 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
                 TryExportReport(out _, out _);
             }
 
+            if (GUILayout.Button("Queue current report", _buttonStyle))
+            {
+                QueueCurrentReport(
+                    Time.realtimeSinceStartupAsDouble,
+                    out _);
+            }
+
+            if (GUILayout.Button(
+                    "Simulate delivery success",
+                    _buttonStyle))
+            {
+                SimulateNextDelivery(
+                    DiagnosticDeliveryOutcome.Succeeded,
+                    Time.realtimeSinceStartupAsDouble);
+            }
+
+            if (GUILayout.Button(
+                    "Simulate retryable failure",
+                    _buttonStyle))
+            {
+                SimulateNextDelivery(
+                    DiagnosticDeliveryOutcome.RetryableFailure,
+                    Time.realtimeSinceStartupAsDouble);
+            }
+
+            if (GUILayout.Button(
+                    "Simulate permanent failure",
+                    _buttonStyle))
+            {
+                SimulateNextDelivery(
+                    DiagnosticDeliveryOutcome.PermanentFailure,
+                    Time.realtimeSinceStartupAsDouble);
+            }
+
             if (!string.IsNullOrEmpty(_reportStatus))
             {
                 GUILayout.Label(_reportStatus, _labelStyle);
+            }
+
+            if (!string.IsNullOrEmpty(_deliveryStatus))
+            {
+                GUILayout.Label(_deliveryStatus, _labelStyle);
             }
 
             if (!string.IsNullOrEmpty(_latestReportPath))
@@ -531,7 +644,9 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
                 "Memory probes are capped at 4 MB and are released after " +
                 "measurement; the sample never forces a garbage collection. " +
                 "Threaded log callbacks only enqueue bounded text. Main-thread " +
-                "drain is capped at eight entries per frame.",
+                "drain is capped at eight entries per frame. Delivery buttons " +
+                "exercise policy only: no network request or external upload " +
+                "is performed.",
                 _labelStyle);
 
             GUILayout.EndScrollView();

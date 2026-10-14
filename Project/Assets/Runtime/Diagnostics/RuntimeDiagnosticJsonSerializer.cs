@@ -218,6 +218,64 @@ namespace UnityCoreLab.Diagnostics
                 indented);
             AppendObjectEnd(builder, 1, indented);
 
+            DiagnosticOutboxStatistics outbox = report.OutboxStatistics;
+            AppendPropertyPrefix(
+                builder,
+                "deliveryStatistics",
+                1,
+                indented);
+            AppendObjectStart(builder);
+            AppendNumberProperty(
+                builder,
+                "capacity",
+                outbox.Capacity,
+                2,
+                indented,
+                first: true);
+            AppendNumberProperty(
+                builder,
+                "pendingCount",
+                outbox.PendingCount,
+                2,
+                indented);
+            AppendBooleanProperty(
+                builder,
+                "hasInFlightAttempt",
+                outbox.HasInFlightAttempt,
+                2,
+                indented);
+            AppendNumberProperty(
+                builder,
+                "acceptedCount",
+                outbox.AcceptedCount,
+                2,
+                indented);
+            AppendNumberProperty(
+                builder,
+                "deliveredCount",
+                outbox.DeliveredCount,
+                2,
+                indented);
+            AppendNumberProperty(
+                builder,
+                "terminalFailureCount",
+                outbox.TerminalFailureCount,
+                2,
+                indented);
+            AppendNumberProperty(
+                builder,
+                "rejectedCount",
+                outbox.RejectedCount,
+                2,
+                indented);
+            AppendNumberProperty(
+                builder,
+                "retryScheduledCount",
+                outbox.RetryScheduledCount,
+                2,
+                indented);
+            AppendObjectEnd(builder, 1, indented);
+
             AppendPropertyPrefix(builder, "eventStorage", 1, indented);
             AppendObjectStart(builder);
             AppendNumberProperty(
@@ -378,6 +436,19 @@ namespace UnityCoreLab.Diagnostics
             {
                 builder.Append("null");
             }
+        }
+
+        private static void AppendBooleanProperty(
+            StringBuilder builder,
+            string name,
+            bool value,
+            int indent,
+            bool indented)
+        {
+            AppendPropertySeparator(builder, indent, indented, first: false);
+            AppendQuoted(builder, name);
+            builder.Append(indented ? ": " : ":");
+            builder.Append(value ? "true" : "false");
         }
 
         private static void AppendPropertyPrefix(

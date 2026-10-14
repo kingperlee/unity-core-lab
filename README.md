@@ -90,7 +90,11 @@ adapts Unity memory counters into an engine-independent monitor, records
 bounded managed-allocation spikes, and preserves unavailable counters as
 `null` rather than reporting a misleading zero. The fourth stage captures
 Unity logs through a thread-safe fixed-capacity inbox and drains bounded work
-onto the main-thread diagnostic history.
+onto the main-thread diagnostic history. The fifth stage adds a bounded FIFO
+outbox with one in-flight report, explicit retryable and permanent outcomes,
+capped exponential backoff, attempt limits, and observable rejection and
+delivery statistics. Transport remains simulated so the retry policy can be
+tested without external services or credentials.
 
 - Runtime code: `Project/Assets/Runtime/Diagnostics`
 - Interactive scene: `Project/Assets/Samples/RuntimeDiagnostics/RuntimeDiagnosticsDemo.unity`
@@ -101,6 +105,6 @@ onto the main-thread diagnostic history.
 ## Roadmap
 
 - Mobile-device rendering case studies
-- Upload policy and platform crash/ANR adapters
+- Platform crash/ANR adapters
 
 Copyright © 2026 Jiangbo Li. All rights reserved.

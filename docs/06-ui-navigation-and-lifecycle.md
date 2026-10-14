@@ -40,7 +40,52 @@ Mode. The sample starts with a protected `Home` root. Try the following:
 6. use Replace to exchange only the top screen without increasing depth.
 
 The scene uses IMGUI only as an observable control surface for the navigation
-model. It is not presented as the final UI implementation. Stage 06.2 will add
-real Unity view instances, asynchronous creation, cancellation tied to an
-owner, and deterministic close/dispose behavior while keeping this navigation
-contract unchanged.
+model. It is not presented as the final UI implementation. The next section
+keeps this navigation contract unchanged while adding real Unity view
+instances, asynchronous creation, owner cancellation, and deterministic
+close/dispose behavior.
+
+## 06.2 Asynchronous view ownership and lifecycle
+
+`UiViewLifecycleCoordinator` subscribes to successful navigation changes and
+maps each accepted route to one asynchronously created `IUiView`. The
+navigation stack remains the source of truth; the coordinator owns the side
+effects required to make that state visible.
+
+The lifecycle states are observable independently from navigation revision:
+
+- `Loading` means a factory request is in flight;
+- `Ready` means an instance exists but has not necessarily become topmost;
+- `Visible` owns presentation for its screen or modal layer;
+- `Covered` remains alive below a newer view and can be resumed;
+- `Cancelled`, `Closed`, and `Faulted` are explicit terminal outcomes.
+
+Screen and modal presentation are independent. A new screen covers the previous
+screen only after its own factory request succeeds. A modal covers only the
+previous modal; it does not hide the active screen. Removing the active entry
+calls `Exit`, disposes the owned instance exactly once, and resumes the newest
+available entry in the same layer.
+
+Cancellation is an ownership rule, not merely a loading optimization. When
+Back removes a route that is still loading, the coordinator cancels its token
+and removes the entry immediately. A provider might ignore cancellation or be
+unable to cancel native work, so completion is checked against the current
+owned entry. A late result is disposed without receiving `Enter`; it can never
+resurrect a route that navigation has already removed.
+
+Open
+`Project/Assets/Samples/UiNavigation/UiViewLifecycleDemo.unity` and enter Play
+Mode. The right side contains real `Canvas`, `Image`, and `Text` GameObjects
+created by a delayed UniTask factory. Try the following:
+
+1. push `Inventory`, wait for it to become visible, then Back to resume `Home`;
+2. open `Settings` and `Confirm`, then observe modal-only cover/resume behavior;
+3. push and replace screens while watching Loading/Ready/Visible history;
+4. run `Push SlowDetails then immediately Back` and verify that cancellation
+   increases while `Home` remains visible and no late view appears.
+
+The runtime coordinator uses `Task` and has no Unity engine reference. The
+sample factory adapts UniTask PlayerLoop work to that boundary and constructs
+Unity objects only on the main thread. A production project can replace the
+factory with Addressables or a project-specific UI asset service without
+changing navigation or lifecycle policy.

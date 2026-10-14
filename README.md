@@ -111,18 +111,20 @@ Starts with an engine-independent, bounded navigation model before adding view
 loading concerns. The 06.1 baseline maintains separate screen and modal stacks,
 routes Back to the top modal first, protects the root screen, rejects duplicate
 routes and capacity overflow, publishes revisioned state changes, and prevents
-reentrant mutation from change callbacks. A lightweight interactive scene
-visualizes the rules without presenting IMGUI as the final view framework.
+reentrant mutation from change callbacks. Stage 06.2 turns committed navigation
+changes into asynchronously created, owned Unity UI views. It covers and resumes
+views by layer, cancels pending creation on Back, rejects late completion from a
+removed route, and guarantees Exit/Dispose for created instances.
 
 - Runtime code: `Project/Assets/Runtime/UiNavigation`
-- Interactive scene: `Project/Assets/Samples/UiNavigation/UiNavigationDemo.unity`
+- Navigation scene: `Project/Assets/Samples/UiNavigation/UiNavigationDemo.unity`
+- View lifecycle scene: `Project/Assets/Samples/UiNavigation/UiViewLifecycleDemo.unity`
 - EditMode tests: `Project/Assets/Tests/EditMode/UiNavigation`
 - PlayMode test: `Project/Assets/Tests/PlayMode/UiNavigationDemoPlayModeTests.cs`
 - Design note: `docs/06-ui-navigation-and-lifecycle.md`
 
 ## Roadmap
 
-- Async UI view creation, ownership, and cancellation
 - Presenter binding, modal policy, and virtualized lists
 - Mobile-device rendering case studies
 - Persistent incident handoff and real Android/iOS crash-SDK adapters

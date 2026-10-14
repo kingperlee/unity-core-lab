@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using NUnit.Framework;
 using UnityCoreLab.Diagnostics;
 
@@ -120,6 +121,89 @@ namespace UnityCoreLab.Tests.EditMode.RuntimeDiagnostics
             detector.ObserveFrame(16d, 2d);
             Assert.Throws<ArgumentException>(() =>
                 detector.ObserveFrame(16d, 1d));
+        }
+
+        [Test]
+        public void Report_CapturesStablePointInTimeSnapshot()
+        {
+            var events = new RuntimeDiagnosticBuffer(2);
+            var detector = new FrameHitchDetector(events, 30d, 100d, 0d);
+            detector.ObserveFrame(40d, 1d);
+            var context = new RuntimeDiagnosticContext(
+                "session-1",
+                "Unity Core Lab",
+                "1.0",
+                "Editor",
+                "Test Device",
+                "Test OS",
+                "Test GPU");
+
+            RuntimeDiagnosticReport report = RuntimeDiagnosticReport.Capture(
+                events,
+                detector,
+                context,
+                new DateTime(2026, 10, 13, 12, 0, 0, DateTimeKind.Utc),
+                2d);
+            events.Add(3d, "Test", DiagnosticSeverity.Info, "After capture");
+
+            Assert.That(report.SchemaVersion, Is.EqualTo(1));
+            Assert.That(report.EventCount, Is.EqualTo(1));
+            Assert.That(report.GetEvent(0).Category,
+                Is.EqualTo(FrameHitchDetector.Category));
+            Assert.That(report.DetectedHitchCount, Is.EqualTo(1));
+            Assert.That(report.WorstFrameMilliseconds, Is.EqualTo(40d));
+            Assert.That(report.EventCapacity, Is.EqualTo(2));
+            Assert.That(events.Count, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void JsonSerializer_EscapesTextAndUsesInvariantNumbers()
+        {
+            var events = new RuntimeDiagnosticBuffer(2);
+            events.Add(
+                1.25d,
+                "Test",
+                DiagnosticSeverity.Error,
+                "Quote \" slash \\ line\n",
+                40.5d,
+                2);
+            var detector = new FrameHitchDetector(events, 50d, 100d, 0d);
+            var context = new RuntimeDiagnosticContext(
+                "session-1",
+                "Unity Core Lab",
+                "1.0",
+                "Editor",
+                "Test Device",
+                "Test OS",
+                "Test GPU");
+            RuntimeDiagnosticReport report = RuntimeDiagnosticReport.Capture(
+                events,
+                detector,
+                context,
+                new DateTime(2026, 10, 13, 12, 0, 0, DateTimeKind.Utc),
+                2.5d);
+
+            CultureInfo previousCulture = CultureInfo.CurrentCulture;
+            try
+            {
+                CultureInfo.CurrentCulture = new CultureInfo("fr-FR");
+                string json = RuntimeDiagnosticJsonSerializer.Serialize(report);
+
+                StringAssert.Contains(
+                    "\"capturedAtSeconds\": 2.5",
+                    json);
+                StringAssert.Contains(
+                    "\"durationMilliseconds\": 40.5",
+                    json);
+                StringAssert.Contains(
+                    "Quote \\\" slash \\\\ line\\n",
+                    json);
+                StringAssert.Contains("\"severity\": \"Error\"", json);
+            }
+            finally
+            {
+                CultureInfo.CurrentCulture = previousCulture;
+            }
         }
     }
 }

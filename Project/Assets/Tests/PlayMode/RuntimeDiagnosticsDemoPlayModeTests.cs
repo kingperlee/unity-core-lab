@@ -30,9 +30,18 @@ namespace UnityCoreLab.Tests.PlayMode
             Assert.That(demo.Events[1].Severity,
                 Is.EqualTo(DiagnosticSeverity.Error));
 
+            RuntimeDiagnosticReport report = demo.CaptureReport();
+            string json = demo.BuildReportJson();
+            Assert.That(report.EventCount, Is.EqualTo(2));
+            Assert.That(report.Context.SessionId, Is.Not.EqualTo("Unknown"));
+            StringAssert.Contains("\"schemaVersion\": 1", json);
+            StringAssert.Contains("\"events\":", json);
+            Assert.That(demo.LatestReportJson, Is.EqualTo(json));
+
             demo.ClearDiagnostics();
             Assert.That(demo.Events.Count, Is.Zero);
             Assert.That(demo.HitchDetector.DetectedHitchCount, Is.Zero);
+            Assert.That(demo.LatestReportJson, Is.Null);
 
             Object.Destroy(root);
             yield return null;

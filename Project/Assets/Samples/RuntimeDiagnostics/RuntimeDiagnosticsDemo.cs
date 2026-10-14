@@ -1,4 +1,7 @@
 using System;
+using System.Globalization;
+using System.IO;
+using System.Text;
 using System.Threading;
 using Unity.Profiling;
 using UnityEngine;
@@ -7,8 +10,8 @@ using UnityCoreLab.Diagnostics;
 namespace UnityCoreLab.Samples.RuntimeDiagnostics
 {
     /// <summary>
-    /// Interactive 05.1 sample for bounded diagnostic recording, slow-frame
-    /// detection, report suppression, and deliberately safe fault injection.
+    /// Interactive diagnostics sample for bounded event capture, safe fault
+    /// injection, and explicitly requested JSON report snapshots.
     /// </summary>
     public sealed class RuntimeDiagnosticsDemo : MonoBehaviour
     {
@@ -17,6 +20,7 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
         public const double CriticalThresholdMilliseconds = 100d;
         public const double ReportCooldownSeconds = 0.5d;
         private const int StartupWarmupFrames = 30;
+        private const int ReportPreviewCharacterLimit = 1800;
 
         private static readonly ProfilerMarker InjectHitchMarker =
             new ProfilerMarker("UnityCoreLab.Diagnostics.InjectMainThreadHitch");
@@ -28,12 +32,19 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
         private GUIStyle _labelStyle;
         private GUIStyle _buttonStyle;
         private Vector2 _scrollPosition;
+        private string _sessionId;
+        private string _latestReportJson;
+        private string _latestReportPreview;
+        private string _latestReportPath;
+        private string _reportStatus;
 
         public bool IsInitialized => _events != null && _hitchDetector != null;
 
         public RuntimeDiagnosticBuffer Events => _events;
 
         public FrameHitchDetector HitchDetector => _hitchDetector;
+
+        public string LatestReportJson => _latestReportJson;
 
         private void Awake()
         {
@@ -43,6 +54,7 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
                 WarningThresholdMilliseconds,
                 CriticalThresholdMilliseconds,
                 ReportCooldownSeconds);
+            _sessionId = Guid.NewGuid().ToString("N");
             _warmupFramesRemaining = StartupWarmupFrames;
         }
 
@@ -109,6 +121,79 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
         {
             _events.Clear();
             _hitchDetector.ResetStatistics();
+            _latestReportJson = null;
+            _latestReportPreview = null;
+            _latestReportPath = null;
+            _reportStatus = null;
+        }
+
+        public RuntimeDiagnosticReport CaptureReport()
+        {
+            return RuntimeDiagnosticReport.Capture(
+                _events,
+                _hitchDetector,
+                CreateRuntimeContext(),
+                DateTime.UtcNow,
+                Time.realtimeSinceStartupAsDouble);
+        }
+
+        public string BuildReportJson()
+        {
+            _latestReportJson = RuntimeDiagnosticJsonSerializer.Serialize(
+                CaptureReport(),
+                indented: true);
+            int previewLength = Math.Min(
+                _latestReportJson.Length,
+                ReportPreviewCharacterLimit);
+            _latestReportPreview = _latestReportJson.Substring(0, previewLength);
+            if (previewLength < _latestReportJson.Length)
+            {
+                _latestReportPreview += "\n... preview truncated ...";
+            }
+
+            _reportStatus =
+                $"Built {_latestReportJson.Length:N0}-character JSON snapshot.";
+            return _latestReportJson;
+        }
+
+        public bool TryExportReport(out string path, out string error)
+        {
+            path = null;
+            error = null;
+            string json = BuildReportJson();
+            try
+            {
+                string directory = Path.Combine(
+                    Application.persistentDataPath,
+                    "Diagnostics");
+                Directory.CreateDirectory(directory);
+                string fileName =
+                    "runtime-diagnostics-" +
+                    DateTime.UtcNow.ToString(
+                        "yyyyMMdd-HHmmss-fff",
+                        CultureInfo.InvariantCulture) +
+                    ".json";
+                path = Path.Combine(directory, fileName);
+                File.WriteAllText(path, json, new UTF8Encoding(false));
+                _latestReportPath = path;
+                _reportStatus = "Exported report successfully.";
+                return true;
+            }
+            catch (Exception exception) when (
+                exception is IOException ||
+                exception is UnauthorizedAccessException ||
+                exception is NotSupportedException ||
+                exception is System.Security.SecurityException)
+            {
+                error = $"{exception.GetType().Name}: {exception.Message}";
+                _reportStatus = $"Export failed: {error}";
+                _events.Add(
+                    Time.realtimeSinceStartupAsDouble,
+                    "ReportExport",
+                    DiagnosticSeverity.Error,
+                    _reportStatus);
+                return false;
+            }
         }
 
         private void OnGUI()
@@ -127,7 +212,9 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
             _scrollPosition = GUILayout.BeginScrollView(_scrollPosition);
 
             GUILayout.Label("Unity Core Lab", _titleStyle);
-            GUILayout.Label("05.1 Runtime diagnostics baseline", _labelStyle);
+            GUILayout.Label(
+                "05.2 Runtime diagnostic snapshot and JSON report",
+                _labelStyle);
             GUILayout.Space(8f);
             GUILayout.Label(
                 $"Hitch thresholds: warning " +
@@ -178,6 +265,36 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
             }
 
             GUILayout.Space(12f);
+            if (GUILayout.Button("Build JSON report preview", _buttonStyle))
+            {
+                BuildReportJson();
+            }
+
+            if (GUILayout.Button(
+                    "Export JSON to persistentDataPath",
+                    _buttonStyle))
+            {
+                TryExportReport(out _, out _);
+            }
+
+            if (!string.IsNullOrEmpty(_reportStatus))
+            {
+                GUILayout.Label(_reportStatus, _labelStyle);
+            }
+
+            if (!string.IsNullOrEmpty(_latestReportPath))
+            {
+                GUILayout.Label(
+                    $"Latest path: {_latestReportPath}",
+                    _labelStyle);
+            }
+
+            if (!string.IsNullOrEmpty(_latestReportPreview))
+            {
+                GUILayout.Label(_latestReportPreview, GUI.skin.textArea);
+            }
+
+            GUILayout.Space(12f);
             GUILayout.Label("Recent events (newest first)", _labelStyle);
             for (int index = _events.Count - 1; index >= 0; index--)
             {
@@ -202,8 +319,8 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
                 "Fault injection is intentionally bounded: it demonstrates " +
                 "hitch detection and handled exception capture without " +
                 "triggering an OOM, process crash, or external upload. The " +
-                "fixed-capacity buffer prevents diagnostic history from " +
-                "growing without limit.",
+                "per-frame path remains bounded. JSON allocation and disk " +
+                "I/O happen only when a report is explicitly requested.",
                 _labelStyle);
 
             GUILayout.EndScrollView();
@@ -235,6 +352,18 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
                 wordWrap = true,
                 fixedHeight = 44f
             };
+        }
+
+        private RuntimeDiagnosticContext CreateRuntimeContext()
+        {
+            return new RuntimeDiagnosticContext(
+                _sessionId,
+                Application.productName,
+                Application.version,
+                Application.platform.ToString(),
+                SystemInfo.deviceModel,
+                SystemInfo.operatingSystem,
+                SystemInfo.graphicsDeviceName);
         }
     }
 }

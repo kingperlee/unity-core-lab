@@ -51,6 +51,34 @@ aggregation. Run `RuntimeDiagnosticsDemoPlayModeTests` to verify the Unity
 adapter and handled-exception path. Tests inject measured values directly and
 do not make scheduler-dependent assertions about `Thread.Sleep` duration.
 
-Future stages can add allocation counters, environment snapshots, log capture,
-report serialization, upload retry policy, and platform crash/ANR adapters
-without changing the bounded event-history contract.
+Future stages can add allocation counters, log capture, upload retry policy,
+and platform crash/ANR adapters without changing the bounded event-history
+contract.
+
+## 05.2 Point-in-time JSON report
+
+The second sample turns the bounded in-memory state into evidence that can be
+attached to a bug report. Report generation is explicit rather than part of the
+per-frame path:
+
+1. `RuntimeDiagnosticReport.Capture` copies the current chronological events;
+2. the snapshot records hitch statistics, overwrite count, session identity,
+   application version, platform, device, operating system, and GPU;
+3. `RuntimeDiagnosticJsonSerializer` writes deterministic JSON with invariant
+   numbers and correct string escaping;
+4. the demo can preview the JSON or save it below
+   `Application.persistentDataPath/Diagnostics`.
+
+A captured report does not change if the live ring buffer is subsequently
+overwritten or cleared. The report includes `schemaVersion` so a future server
+or offline analysis tool can distinguish incompatible formats.
+
+The serializer is deliberately engine-independent and reflection-free. Its
+property order is stable, but consumers must identify fields by name rather
+than depend on their order. JSON construction and disk I/O allocate memory, so
+they occur only after an explicit button press. They must not be moved into
+`Update` or another per-frame callback.
+
+This stage still performs no upload. Separating capture, serialization, local
+persistence, and transport keeps retry policy and privacy decisions out of the
+low-overhead event detector.

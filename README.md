@@ -80,10 +80,12 @@ uses a fixed warm-up and sampling window instead of comparing instantaneous FPS.
 ### 05 Runtime Diagnostics and Fault Injection
 
 Builds a bounded runtime diagnostic pipeline instead of an unbounded debug log.
-The first sample detects warning and critical frame hitches from a monotonic
-clock, coalesces repeated reports during a cooldown, retains chronological
-events in a fixed-capacity ring buffer, and exposes safe main-thread stall and
-handled-exception injection controls.
+The sample detects warning and critical frame hitches from a monotonic clock,
+coalesces repeated reports during a cooldown, retains chronological events in
+a fixed-capacity ring buffer, and exposes safe main-thread stall and
+handled-exception injection controls. An explicitly requested point-in-time
+snapshot combines those events with hitch statistics and runtime environment
+metadata, then previews or locally exports deterministic JSON.
 
 - Runtime code: `Project/Assets/Runtime/Diagnostics`
 - Interactive scene: `Project/Assets/Samples/RuntimeDiagnostics/RuntimeDiagnosticsDemo.unity`
@@ -94,6 +96,6 @@ handled-exception injection controls.
 ## Roadmap
 
 - Mobile-device rendering case studies
-- Allocation counters, report serialization, and platform crash/ANR adapters
+- Allocation counters, log capture, upload policy, and platform crash/ANR adapters
 
 Copyright © 2026 Jiangbo Li. All rights reserved.

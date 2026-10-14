@@ -105,8 +105,25 @@ and safe in-memory artifacts that never crash or freeze the demo process.
 - PlayMode test: `Project/Assets/Tests/PlayMode/RuntimeDiagnosticsDemoPlayModeTests.cs`
 - Design note: `docs/05-runtime-diagnostics.md`
 
+### 06 UI Navigation and View Lifecycle
+
+Starts with an engine-independent, bounded navigation model before adding view
+loading concerns. The 06.1 baseline maintains separate screen and modal stacks,
+routes Back to the top modal first, protects the root screen, rejects duplicate
+routes and capacity overflow, publishes revisioned state changes, and prevents
+reentrant mutation from change callbacks. A lightweight interactive scene
+visualizes the rules without presenting IMGUI as the final view framework.
+
+- Runtime code: `Project/Assets/Runtime/UiNavigation`
+- Interactive scene: `Project/Assets/Samples/UiNavigation/UiNavigationDemo.unity`
+- EditMode tests: `Project/Assets/Tests/EditMode/UiNavigation`
+- PlayMode test: `Project/Assets/Tests/PlayMode/UiNavigationDemoPlayModeTests.cs`
+- Design note: `docs/06-ui-navigation-and-lifecycle.md`
+
 ## Roadmap
 
+- Async UI view creation, ownership, and cancellation
+- Presenter binding, modal policy, and virtualized lists
 - Mobile-device rendering case studies
 - Persistent incident handoff and real Android/iOS crash-SDK adapters
 

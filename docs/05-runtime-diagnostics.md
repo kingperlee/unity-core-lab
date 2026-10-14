@@ -82,3 +82,44 @@ they occur only after an explicit button press. They must not be moved into
 This stage still performs no upload. Separating capture, serialization, local
 persistence, and transport keeps retry policy and privacy decisions out of the
 low-overhead event detector.
+
+## 05.3 Managed-memory counters and allocation spikes
+
+The third stage samples four Unity `ProfilerRecorder` counters with capacity
+one:
+
+- `GC Allocated In Frame` for managed bytes allocated during a frame;
+- `GC Used Memory` and `GC Reserved Memory` for managed-heap usage;
+- `System Used Memory` for the process memory reported by the operating system.
+
+`RuntimeDiagnosticsDemo` is the Unity adapter. It converts a valid recorder
+value into `ManagedMemorySample` and uses `-1` only at that boundary to express
+an unavailable counter. The engine-independent `ManagedMemoryMonitor` then
+tracks availability flags, sample counts, peak values, allocation spikes, and
+cooldown suppression without allocating on an ordinary sample.
+
+The sample reports a warning at `256 KB` allocated in one frame and a critical
+event at `1 MB`. Repeated events have a one-second cooldown, while a transition
+from warning to critical bypasses the cooldown. The two injection buttons make
+bounded `512 KB` and `2 MB` allocations and retain them briefly so the counter
+can observe them. The demo never forces a collection because `GC.Collect`
+would introduce a different stall and distort the experiment.
+
+Counter availability is part of the result. `GC Allocated In Frame` is not
+available in every Release Player configuration, so an unavailable value is
+serialized as JSON `null`, not zero. Used, reserved, and system memory are
+reported independently because they answer different questions. A rising
+`GC Used Memory` value alone does not prove a leak; warm-up, caches, and pools
+can retain memory intentionally. Confirm suspected leaks by comparing Memory
+Profiler snapshots on the target device.
+
+Editor values include Editor and profiling overhead. Use this scene to learn
+the signal and validate the event/report pipeline, then use a development
+build on the target platform for performance conclusions.
+
+References:
+
+- Unity 2022.3 Memory Profiler module:
+  https://docs.unity3d.com/2022.3/Documentation/Manual/ProfilerMemory.html
+- Unity 2022.3 `ProfilerRecorder` API:
+  https://docs.unity3d.com/2022.3/Documentation/ScriptReference/Unity.Profiling.ProfilerRecorder.html

@@ -85,7 +85,10 @@ coalesces repeated reports during a cooldown, retains chronological events in
 a fixed-capacity ring buffer, and exposes safe main-thread stall and
 handled-exception injection controls. An explicitly requested point-in-time
 snapshot combines those events with hitch statistics and runtime environment
-metadata, then previews or locally exports deterministic JSON.
+metadata, then previews or locally exports deterministic JSON. The third stage
+adapts Unity memory counters into an engine-independent monitor, records
+bounded managed-allocation spikes, and preserves unavailable counters as
+`null` rather than reporting a misleading zero.
 
 - Runtime code: `Project/Assets/Runtime/Diagnostics`
 - Interactive scene: `Project/Assets/Samples/RuntimeDiagnostics/RuntimeDiagnosticsDemo.unity`
@@ -96,6 +99,6 @@ metadata, then previews or locally exports deterministic JSON.
 ## Roadmap
 
 - Mobile-device rendering case studies
-- Allocation counters, log capture, upload policy, and platform crash/ANR adapters
+- Log capture, upload policy, and platform crash/ANR adapters
 
 Copyright © 2026 Jiangbo Li. All rights reserved.

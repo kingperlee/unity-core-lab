@@ -113,6 +113,64 @@ namespace UnityCoreLab.Diagnostics
                 indented);
             AppendObjectEnd(builder, 1, indented);
 
+            ManagedMemoryStatistics memory = report.MemoryStatistics;
+            AppendPropertyPrefix(builder, "memoryStatistics", 1, indented);
+            AppendObjectStart(builder);
+            AppendNumberProperty(
+                builder,
+                "observedSampleCount",
+                memory.ObservedSampleCount,
+                2,
+                indented,
+                first: true);
+            AppendNumberProperty(
+                builder,
+                "unavailableAllocationSampleCount",
+                memory.UnavailableAllocationSampleCount,
+                2,
+                indented);
+            AppendNumberProperty(
+                builder,
+                "allocationSpikeCount",
+                memory.AllocationSpikeCount,
+                2,
+                indented);
+            AppendNumberProperty(
+                builder,
+                "suppressedReportCount",
+                memory.SuppressedReportCount,
+                2,
+                indented);
+            AppendNullableNumberProperty(
+                builder,
+                "maxGcAllocatedInFrameBytes",
+                memory.MaxGcAllocatedInFrameBytes,
+                memory.HasGcAllocationData,
+                2,
+                indented);
+            AppendNullableNumberProperty(
+                builder,
+                "peakGcUsedBytes",
+                memory.PeakGcUsedBytes,
+                memory.HasGcUsedMemoryData,
+                2,
+                indented);
+            AppendNullableNumberProperty(
+                builder,
+                "peakGcReservedBytes",
+                memory.PeakGcReservedBytes,
+                memory.HasGcReservedMemoryData,
+                2,
+                indented);
+            AppendNullableNumberProperty(
+                builder,
+                "peakSystemUsedBytes",
+                memory.PeakSystemUsedBytes,
+                memory.HasSystemUsedMemoryData,
+                2,
+                indented);
+            AppendObjectEnd(builder, 1, indented);
+
             AppendPropertyPrefix(builder, "eventStorage", 1, indented);
             AppendObjectStart(builder);
             AppendNumberProperty(
@@ -252,6 +310,27 @@ namespace UnityCoreLab.Diagnostics
             AppendQuoted(builder, name);
             builder.Append(indented ? ": " : ":");
             builder.Append(value.ToString("R", CultureInfo.InvariantCulture));
+        }
+
+        private static void AppendNullableNumberProperty(
+            StringBuilder builder,
+            string name,
+            long value,
+            bool available,
+            int indent,
+            bool indented)
+        {
+            AppendPropertySeparator(builder, indent, indented, first: false);
+            AppendQuoted(builder, name);
+            builder.Append(indented ? ": " : ":");
+            if (available)
+            {
+                builder.Append(value.ToString(CultureInfo.InvariantCulture));
+            }
+            else
+            {
+                builder.Append("null");
+            }
         }
 
         private static void AppendPropertyPrefix(

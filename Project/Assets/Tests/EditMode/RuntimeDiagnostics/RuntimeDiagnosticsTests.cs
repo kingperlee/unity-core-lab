@@ -199,11 +199,145 @@ namespace UnityCoreLab.Tests.EditMode.RuntimeDiagnostics
                     "Quote \\\" slash \\\\ line\\n",
                     json);
                 StringAssert.Contains("\"severity\": \"Error\"", json);
+                StringAssert.Contains(
+                    "\"maxGcAllocatedInFrameBytes\": null",
+                    json);
             }
             finally
             {
                 CultureInfo.CurrentCulture = previousCulture;
             }
+        }
+
+        [Test]
+        public void MemoryMonitor_TracksPeaksAndCoalescesAllocationSpikes()
+        {
+            var events = new RuntimeDiagnosticBuffer(8);
+            var monitor = new ManagedMemoryMonitor(
+                events,
+                warningAllocationBytes: 256 * 1024,
+                criticalAllocationBytes: 1024 * 1024,
+                reportCooldownSeconds: 1d);
+
+            Assert.That(
+                monitor.Observe(
+                    new ManagedMemorySample(
+                        300 * 1024,
+                        10 * 1024 * 1024,
+                        16 * 1024 * 1024,
+                        100 * 1024 * 1024),
+                    1d),
+                Is.True);
+            Assert.That(
+                monitor.Observe(
+                    new ManagedMemorySample(
+                        400 * 1024,
+                        11 * 1024 * 1024,
+                        16 * 1024 * 1024,
+                        101 * 1024 * 1024),
+                    1.1d),
+                Is.False);
+            Assert.That(
+                monitor.Observe(
+                    new ManagedMemorySample(
+                        2 * 1024 * 1024,
+                        12 * 1024 * 1024,
+                        20 * 1024 * 1024,
+                        102 * 1024 * 1024),
+                    1.2d),
+                Is.True,
+                "Critical allocation must bypass a warning cooldown.");
+
+            Assert.That(events.Count, Is.EqualTo(2));
+            Assert.That(events[0].Severity,
+                Is.EqualTo(DiagnosticSeverity.Warning));
+            Assert.That(events[1].Severity,
+                Is.EqualTo(DiagnosticSeverity.Critical));
+            Assert.That(events[1].OccurrenceCount, Is.EqualTo(2));
+            Assert.That(monitor.ObservedSampleCount, Is.EqualTo(3));
+            Assert.That(monitor.AllocationSpikeCount, Is.EqualTo(3));
+            Assert.That(monitor.SuppressedReportCount, Is.EqualTo(1));
+            Assert.That(
+                monitor.MaxGcAllocatedInFrameBytes,
+                Is.EqualTo(2 * 1024 * 1024));
+            Assert.That(
+                monitor.PeakGcUsedBytes,
+                Is.EqualTo(12 * 1024 * 1024));
+        }
+
+        [Test]
+        public void MemoryMonitor_PreservesUnavailableCounterStateInReport()
+        {
+            var events = new RuntimeDiagnosticBuffer(2);
+            var hitchDetector = new FrameHitchDetector(
+                events,
+                30d,
+                100d,
+                0d);
+            var memoryMonitor = new ManagedMemoryMonitor(
+                events,
+                256 * 1024,
+                1024 * 1024,
+                0d);
+            memoryMonitor.Observe(
+                new ManagedMemorySample(
+                    ManagedMemorySample.Unavailable,
+                    10 * 1024 * 1024,
+                    16 * 1024 * 1024,
+                    ManagedMemorySample.Unavailable),
+                1d);
+            var context = new RuntimeDiagnosticContext(
+                "session-1",
+                "Unity Core Lab",
+                "1.0",
+                "Editor",
+                "Test Device",
+                "Test OS",
+                "Test GPU");
+            RuntimeDiagnosticReport report = RuntimeDiagnosticReport.Capture(
+                events,
+                hitchDetector,
+                context,
+                new DateTime(2026, 10, 14, 12, 0, 0, DateTimeKind.Utc),
+                2d,
+                memoryMonitor);
+            string json = RuntimeDiagnosticJsonSerializer.Serialize(report);
+
+            Assert.That(
+                report.MemoryStatistics.UnavailableAllocationSampleCount,
+                Is.EqualTo(1));
+            Assert.That(
+                report.MemoryStatistics.HasGcAllocationData,
+                Is.False);
+            Assert.That(
+                report.MemoryStatistics.HasGcUsedMemoryData,
+                Is.True);
+            StringAssert.Contains(
+                "\"maxGcAllocatedInFrameBytes\": null",
+                json);
+            StringAssert.Contains(
+                "\"peakGcUsedBytes\": 10485760",
+                json);
+        }
+
+        [Test]
+        public void MemorySampleAndMonitor_RejectInvalidInput()
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                new ManagedMemorySample(-2, 0, 0, 0));
+
+            var events = new RuntimeDiagnosticBuffer(2);
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                new ManagedMemoryMonitor(events, 0, 1024, 0d));
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                new ManagedMemoryMonitor(events, 1024, 1024, 0d));
+
+            var monitor = new ManagedMemoryMonitor(events, 1024, 2048, 0d);
+            monitor.Observe(new ManagedMemorySample(0, 0, 0, 0), 2d);
+            Assert.Throws<ArgumentException>(() =>
+                monitor.Observe(
+                    new ManagedMemorySample(0, 0, 0, 0),
+                    1d));
         }
     }
 }

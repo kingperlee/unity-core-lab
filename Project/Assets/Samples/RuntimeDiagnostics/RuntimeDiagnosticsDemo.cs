@@ -19,14 +19,23 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
         public const double WarningThresholdMilliseconds = 33.3d;
         public const double CriticalThresholdMilliseconds = 100d;
         public const double ReportCooldownSeconds = 0.5d;
+        public const long WarningAllocationBytes = 256L * 1024L;
+        public const long CriticalAllocationBytes = 1024L * 1024L;
+        public const double MemoryReportCooldownSeconds = 1d;
         private const int StartupWarmupFrames = 30;
         private const int ReportPreviewCharacterLimit = 1800;
+        private const int MaximumInjectedAllocationKilobytes = 4096;
 
         private static readonly ProfilerMarker InjectHitchMarker =
             new ProfilerMarker("UnityCoreLab.Diagnostics.InjectMainThreadHitch");
 
         private RuntimeDiagnosticBuffer _events;
         private FrameHitchDetector _hitchDetector;
+        private ManagedMemoryMonitor _memoryMonitor;
+        private ProfilerRecorder _gcAllocatedInFrameRecorder;
+        private ProfilerRecorder _gcUsedMemoryRecorder;
+        private ProfilerRecorder _gcReservedMemoryRecorder;
+        private ProfilerRecorder _systemUsedMemoryRecorder;
         private int _warmupFramesRemaining;
         private GUIStyle _titleStyle;
         private GUIStyle _labelStyle;
@@ -37,12 +46,19 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
         private string _latestReportPreview;
         private string _latestReportPath;
         private string _reportStatus;
+        private byte[] _managedAllocationProbe;
+        private int _releaseManagedProbeFrame;
 
-        public bool IsInitialized => _events != null && _hitchDetector != null;
+        public bool IsInitialized =>
+            _events != null &&
+            _hitchDetector != null &&
+            _memoryMonitor != null;
 
         public RuntimeDiagnosticBuffer Events => _events;
 
         public FrameHitchDetector HitchDetector => _hitchDetector;
+
+        public ManagedMemoryMonitor MemoryMonitor => _memoryMonitor;
 
         public string LatestReportJson => _latestReportJson;
 
@@ -54,21 +70,46 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
                 WarningThresholdMilliseconds,
                 CriticalThresholdMilliseconds,
                 ReportCooldownSeconds);
+            _memoryMonitor = new ManagedMemoryMonitor(
+                _events,
+                WarningAllocationBytes,
+                CriticalAllocationBytes,
+                MemoryReportCooldownSeconds);
             _sessionId = Guid.NewGuid().ToString("N");
             _warmupFramesRemaining = StartupWarmupFrames;
+            StartMemoryCounters();
         }
 
         private void Update()
         {
+            if (_managedAllocationProbe != null &&
+                Time.frameCount >= _releaseManagedProbeFrame)
+            {
+                _managedAllocationProbe = null;
+            }
+
             if (_warmupFramesRemaining > 0)
             {
                 _warmupFramesRemaining--;
                 return;
             }
 
+            double timestampSeconds = Time.realtimeSinceStartupAsDouble;
             ObserveFrameForTesting(
                 Time.unscaledDeltaTime * 1000d,
-                Time.realtimeSinceStartupAsDouble);
+                timestampSeconds);
+            ObserveMemoryForTesting(
+                ReadManagedMemorySample(),
+                timestampSeconds);
+        }
+
+        private void OnDestroy()
+        {
+            _gcAllocatedInFrameRecorder.Dispose();
+            _gcUsedMemoryRecorder.Dispose();
+            _gcReservedMemoryRecorder.Dispose();
+            _systemUsedMemoryRecorder.Dispose();
+            _managedAllocationProbe = null;
         }
 
         public bool ObserveFrameForTesting(
@@ -78,6 +119,13 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
             return _hitchDetector.ObserveFrame(
                 frameDurationMilliseconds,
                 timestampSeconds);
+        }
+
+        public bool ObserveMemoryForTesting(
+            ManagedMemorySample sample,
+            double timestampSeconds)
+        {
+            return _memoryMonitor.Observe(sample, timestampSeconds);
         }
 
         public void InjectMainThreadStall(int milliseconds)
@@ -117,10 +165,30 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
             }
         }
 
+        public void InjectManagedAllocation(int kilobytes)
+        {
+            if (kilobytes <= 0 ||
+                kilobytes > MaximumInjectedAllocationKilobytes)
+            {
+                throw new ArgumentOutOfRangeException(nameof(kilobytes));
+            }
+
+            _managedAllocationProbe = new byte[kilobytes * 1024];
+            _managedAllocationProbe[0] = 1;
+            _managedAllocationProbe[_managedAllocationProbe.Length - 1] = 1;
+            _releaseManagedProbeFrame = Time.frameCount + 2;
+            _events.Add(
+                Time.realtimeSinceStartupAsDouble,
+                "FaultInjection",
+                DiagnosticSeverity.Info,
+                $"Allocated a bounded {kilobytes} KB managed probe.");
+        }
+
         public void ClearDiagnostics()
         {
             _events.Clear();
             _hitchDetector.ResetStatistics();
+            _memoryMonitor.ResetStatistics();
             _latestReportJson = null;
             _latestReportPreview = null;
             _latestReportPath = null;
@@ -134,7 +202,8 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
                 _hitchDetector,
                 CreateRuntimeContext(),
                 DateTime.UtcNow,
-                Time.realtimeSinceStartupAsDouble);
+                Time.realtimeSinceStartupAsDouble,
+                _memoryMonitor);
         }
 
         public string BuildReportJson()
@@ -213,7 +282,7 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
 
             GUILayout.Label("Unity Core Lab", _titleStyle);
             GUILayout.Label(
-                "05.2 Runtime diagnostic snapshot and JSON report",
+                "05.3 Managed-memory counters and allocation spikes",
                 _labelStyle);
             GUILayout.Space(8f);
             GUILayout.Label(
@@ -237,6 +306,31 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
                 $"overwritten: {_events.OverwrittenCount}",
                 _labelStyle);
 
+            GUILayout.Space(8f);
+            GUILayout.Label(
+                "ProfilerRecorder counters (last completed frame)",
+                _labelStyle);
+            GUILayout.Label(
+                "GC allocated in frame: " +
+                FormatCounterBytes(_gcAllocatedInFrameRecorder),
+                _labelStyle);
+            GUILayout.Label(
+                "GC heap used / reserved: " +
+                $"{FormatCounterBytes(_gcUsedMemoryRecorder)} / " +
+                FormatCounterBytes(_gcReservedMemoryRecorder),
+                _labelStyle);
+            GUILayout.Label(
+                "System used memory: " +
+                FormatCounterBytes(_systemUsedMemoryRecorder),
+                _labelStyle);
+            string maximumAllocation = FormatBytes(
+                _memoryMonitor.MaxGcAllocatedInFrameBytes,
+                _memoryMonitor.HasGcAllocationData);
+            GUILayout.Label(
+                $"Allocation spikes: {_memoryMonitor.AllocationSpikeCount}, " +
+                $"max: {maximumAllocation}",
+                _labelStyle);
+
             GUILayout.Space(12f);
             if (GUILayout.Button(
                     "Inject 80 ms main-thread stall",
@@ -257,6 +351,20 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
                     _buttonStyle))
             {
                 InjectHandledException();
+            }
+
+            if (GUILayout.Button(
+                    "Allocate 512 KB managed probe",
+                    _buttonStyle))
+            {
+                InjectManagedAllocation(512);
+            }
+
+            if (GUILayout.Button(
+                    "Allocate 2 MB managed probe",
+                    _buttonStyle))
+            {
+                InjectManagedAllocation(2048);
             }
 
             if (GUILayout.Button("Clear diagnostics", _buttonStyle))
@@ -320,7 +428,9 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
                 "hitch detection and handled exception capture without " +
                 "triggering an OOM, process crash, or external upload. The " +
                 "per-frame path remains bounded. JSON allocation and disk " +
-                "I/O happen only when a report is explicitly requested.",
+                "I/O happen only when a report is explicitly requested. " +
+                "Memory probes are capped at 4 MB and are released after " +
+                "measurement; the sample never forces a garbage collection.",
                 _labelStyle);
 
             GUILayout.EndScrollView();
@@ -364,6 +474,64 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
                 SystemInfo.deviceModel,
                 SystemInfo.operatingSystem,
                 SystemInfo.graphicsDeviceName);
+        }
+
+        private void StartMemoryCounters()
+        {
+            _gcAllocatedInFrameRecorder = ProfilerRecorder.StartNew(
+                ProfilerCategory.Memory,
+                "GC Allocated In Frame",
+                1);
+            _gcUsedMemoryRecorder = ProfilerRecorder.StartNew(
+                ProfilerCategory.Memory,
+                "GC Used Memory",
+                1);
+            _gcReservedMemoryRecorder = ProfilerRecorder.StartNew(
+                ProfilerCategory.Memory,
+                "GC Reserved Memory",
+                1);
+            _systemUsedMemoryRecorder = ProfilerRecorder.StartNew(
+                ProfilerCategory.Memory,
+                "System Used Memory",
+                1);
+        }
+
+        private ManagedMemorySample ReadManagedMemorySample()
+        {
+            return new ManagedMemorySample(
+                ReadCounter(_gcAllocatedInFrameRecorder),
+                ReadCounter(_gcUsedMemoryRecorder),
+                ReadCounter(_gcReservedMemoryRecorder),
+                ReadCounter(_systemUsedMemoryRecorder));
+        }
+
+        private static long ReadCounter(ProfilerRecorder recorder)
+        {
+            return recorder.Valid
+                ? Math.Max(0L, recorder.LastValue)
+                : ManagedMemorySample.Unavailable;
+        }
+
+        private static string FormatCounterBytes(ProfilerRecorder recorder)
+        {
+            return FormatBytes(ReadCounter(recorder), recorder.Valid);
+        }
+
+        private static string FormatBytes(long bytes, bool available)
+        {
+            if (!available)
+            {
+                return "Unavailable";
+            }
+
+            const double Kilobyte = 1024d;
+            const double Megabyte = Kilobyte * 1024d;
+            if (bytes >= Megabyte)
+            {
+                return $"{bytes / Megabyte:F2} MB";
+            }
+
+            return $"{bytes / Kilobyte:F1} KB";
         }
     }
 }

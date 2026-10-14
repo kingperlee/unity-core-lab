@@ -88,7 +88,9 @@ snapshot combines those events with hitch statistics and runtime environment
 metadata, then previews or locally exports deterministic JSON. The third stage
 adapts Unity memory counters into an engine-independent monitor, records
 bounded managed-allocation spikes, and preserves unavailable counters as
-`null` rather than reporting a misleading zero.
+`null` rather than reporting a misleading zero. The fourth stage captures
+Unity logs through a thread-safe fixed-capacity inbox and drains bounded work
+onto the main-thread diagnostic history.
 
 - Runtime code: `Project/Assets/Runtime/Diagnostics`
 - Interactive scene: `Project/Assets/Samples/RuntimeDiagnostics/RuntimeDiagnosticsDemo.unity`
@@ -99,6 +101,6 @@ bounded managed-allocation spikes, and preserves unavailable counters as
 ## Roadmap
 
 - Mobile-device rendering case studies
-- Log capture, upload policy, and platform crash/ANR adapters
+- Upload policy and platform crash/ANR adapters
 
 Copyright © 2026 Jiangbo Li. All rights reserved.

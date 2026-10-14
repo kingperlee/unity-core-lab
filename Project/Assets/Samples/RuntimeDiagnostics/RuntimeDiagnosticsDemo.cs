@@ -22,9 +22,14 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
         public const long WarningAllocationBytes = 256L * 1024L;
         public const long CriticalAllocationBytes = 1024L * 1024L;
         public const double MemoryReportCooldownSeconds = 1d;
+        public const int LogInboxCapacity = 64;
+        public const int MaximumLogDrainPerFrame = 8;
         private const int StartupWarmupFrames = 30;
         private const int ReportPreviewCharacterLimit = 1800;
         private const int MaximumInjectedAllocationKilobytes = 4096;
+        private const int MaximumLogMessageCharacters = 1024;
+        private const int MaximumLogStackTraceCharacters = 2048;
+        private const int MaximumInjectedLogBurst = 256;
 
         private static readonly ProfilerMarker InjectHitchMarker =
             new ProfilerMarker("UnityCoreLab.Diagnostics.InjectMainThreadHitch");
@@ -32,6 +37,7 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
         private RuntimeDiagnosticBuffer _events;
         private FrameHitchDetector _hitchDetector;
         private ManagedMemoryMonitor _memoryMonitor;
+        private RuntimeLogInbox _logInbox;
         private ProfilerRecorder _gcAllocatedInFrameRecorder;
         private ProfilerRecorder _gcUsedMemoryRecorder;
         private ProfilerRecorder _gcReservedMemoryRecorder;
@@ -52,13 +58,16 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
         public bool IsInitialized =>
             _events != null &&
             _hitchDetector != null &&
-            _memoryMonitor != null;
+            _memoryMonitor != null &&
+            _logInbox != null;
 
         public RuntimeDiagnosticBuffer Events => _events;
 
         public FrameHitchDetector HitchDetector => _hitchDetector;
 
         public ManagedMemoryMonitor MemoryMonitor => _memoryMonitor;
+
+        public RuntimeLogInbox LogInbox => _logInbox;
 
         public string LatestReportJson => _latestReportJson;
 
@@ -75,9 +84,23 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
                 WarningAllocationBytes,
                 CriticalAllocationBytes,
                 MemoryReportCooldownSeconds);
+            _logInbox = new RuntimeLogInbox(
+                LogInboxCapacity,
+                MaximumLogMessageCharacters,
+                MaximumLogStackTraceCharacters);
             _sessionId = Guid.NewGuid().ToString("N");
             _warmupFramesRemaining = StartupWarmupFrames;
             StartMemoryCounters();
+        }
+
+        private void OnEnable()
+        {
+            Application.logMessageReceivedThreaded += HandleUnityLog;
+        }
+
+        private void OnDisable()
+        {
+            Application.logMessageReceivedThreaded -= HandleUnityLog;
         }
 
         private void Update()
@@ -88,13 +111,15 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
                 _managedAllocationProbe = null;
             }
 
+            double timestampSeconds = Time.realtimeSinceStartupAsDouble;
+            DrainLogsForTesting(timestampSeconds, MaximumLogDrainPerFrame);
+
             if (_warmupFramesRemaining > 0)
             {
                 _warmupFramesRemaining--;
                 return;
             }
 
-            double timestampSeconds = Time.realtimeSinceStartupAsDouble;
             ObserveFrameForTesting(
                 Time.unscaledDeltaTime * 1000d,
                 timestampSeconds);
@@ -126,6 +151,30 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
             double timestampSeconds)
         {
             return _memoryMonitor.Observe(sample, timestampSeconds);
+        }
+
+        public int DrainLogsForTesting(
+            double timestampSeconds,
+            int maximumEntries)
+        {
+            if (maximumEntries <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(maximumEntries));
+            }
+
+            int drained = 0;
+            while (drained < maximumEntries &&
+                   _logInbox.TryDequeue(out RuntimeLogEntry entry))
+            {
+                _events.Add(
+                    timestampSeconds,
+                    "UnityLog",
+                    entry.Severity,
+                    entry.BuildDiagnosticMessage());
+                drained++;
+            }
+
+            return drained;
         }
 
         public void InjectMainThreadStall(int milliseconds)
@@ -184,11 +233,28 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
                 $"Allocated a bounded {kilobytes} KB managed probe.");
         }
 
+        public void InjectLogBurst(int count)
+        {
+            if (count <= 0 || count > MaximumInjectedLogBurst)
+            {
+                throw new ArgumentOutOfRangeException(nameof(count));
+            }
+
+            for (int index = 0; index < count; index++)
+            {
+                _logInbox.Enqueue(
+                    DiagnosticSeverity.Info,
+                    $"Synthetic burst log {index + 1}/{count}.",
+                    string.Empty);
+            }
+        }
+
         public void ClearDiagnostics()
         {
             _events.Clear();
             _hitchDetector.ResetStatistics();
             _memoryMonitor.ResetStatistics();
+            _logInbox.Clear();
             _latestReportJson = null;
             _latestReportPreview = null;
             _latestReportPath = null;
@@ -203,7 +269,8 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
                 CreateRuntimeContext(),
                 DateTime.UtcNow,
                 Time.realtimeSinceStartupAsDouble,
-                _memoryMonitor);
+                _memoryMonitor,
+                _logInbox);
         }
 
         public string BuildReportJson()
@@ -282,7 +349,7 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
 
             GUILayout.Label("Unity Core Lab", _titleStyle);
             GUILayout.Label(
-                "05.3 Managed-memory counters and allocation spikes",
+                "05.4 Bounded, thread-safe Unity log capture",
                 _labelStyle);
             GUILayout.Space(8f);
             GUILayout.Label(
@@ -331,6 +398,19 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
                 $"max: {maximumAllocation}",
                 _labelStyle);
 
+            RuntimeLogCaptureStatistics logStatistics =
+                _logInbox.GetStatistics();
+            GUILayout.Label(
+                $"Log inbox: {logStatistics.PendingCount}/" +
+                $"{logStatistics.Capacity}, received " +
+                $"{logStatistics.ReceivedCount}, drained " +
+                $"{logStatistics.DrainedCount}",
+                _labelStyle);
+            GUILayout.Label(
+                $"Log pressure: dropped {logStatistics.DroppedCount}, " +
+                $"truncated {logStatistics.TruncatedCount}",
+                _labelStyle);
+
             GUILayout.Space(12f);
             if (GUILayout.Button(
                     "Inject 80 ms main-thread stall",
@@ -365,6 +445,25 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
                     _buttonStyle))
             {
                 InjectManagedAllocation(2048);
+            }
+
+            if (GUILayout.Button("Emit Unity warning", _buttonStyle))
+            {
+                Debug.LogWarning(
+                    "[UnityCoreLab] Intentional warning for log capture.");
+            }
+
+            if (GUILayout.Button("Emit Unity error", _buttonStyle))
+            {
+                Debug.LogError(
+                    "[UnityCoreLab] Intentional error for log capture.");
+            }
+
+            if (GUILayout.Button(
+                    "Inject 80-message inbox burst",
+                    _buttonStyle))
+            {
+                InjectLogBurst(80);
             }
 
             if (GUILayout.Button("Clear diagnostics", _buttonStyle))
@@ -430,7 +529,9 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
                 "per-frame path remains bounded. JSON allocation and disk " +
                 "I/O happen only when a report is explicitly requested. " +
                 "Memory probes are capped at 4 MB and are released after " +
-                "measurement; the sample never forces a garbage collection.",
+                "measurement; the sample never forces a garbage collection. " +
+                "Threaded log callbacks only enqueue bounded text. Main-thread " +
+                "drain is capped at eight entries per frame.",
                 _labelStyle);
 
             GUILayout.EndScrollView();
@@ -532,6 +633,38 @@ namespace UnityCoreLab.Samples.RuntimeDiagnostics
             }
 
             return $"{bytes / Kilobyte:F1} KB";
+        }
+
+        private void HandleUnityLog(
+            string condition,
+            string stackTrace,
+            LogType logType)
+        {
+            RuntimeLogInbox inbox = _logInbox;
+            if (inbox == null)
+            {
+                return;
+            }
+
+            inbox.Enqueue(
+                MapLogSeverity(logType),
+                condition,
+                stackTrace);
+        }
+
+        private static DiagnosticSeverity MapLogSeverity(LogType logType)
+        {
+            switch (logType)
+            {
+                case LogType.Warning:
+                    return DiagnosticSeverity.Warning;
+                case LogType.Assert:
+                case LogType.Error:
+                case LogType.Exception:
+                    return DiagnosticSeverity.Error;
+                default:
+                    return DiagnosticSeverity.Info;
+            }
         }
     }
 }

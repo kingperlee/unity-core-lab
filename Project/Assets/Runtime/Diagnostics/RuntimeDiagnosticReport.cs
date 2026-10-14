@@ -20,6 +20,7 @@ namespace UnityCoreLab.Diagnostics
             long suppressedReportCount,
             double worstFrameMilliseconds,
             ManagedMemoryStatistics memoryStatistics,
+            RuntimeLogCaptureStatistics logCaptureStatistics,
             int eventCapacity,
             long overwrittenEventCount,
             RuntimeDiagnosticEvent[] events)
@@ -31,6 +32,7 @@ namespace UnityCoreLab.Diagnostics
             SuppressedReportCount = suppressedReportCount;
             WorstFrameMilliseconds = worstFrameMilliseconds;
             MemoryStatistics = memoryStatistics;
+            LogCaptureStatistics = logCaptureStatistics;
             EventCapacity = eventCapacity;
             OverwrittenEventCount = overwrittenEventCount;
             _events = events;
@@ -51,6 +53,8 @@ namespace UnityCoreLab.Diagnostics
         public double WorstFrameMilliseconds { get; }
 
         public ManagedMemoryStatistics MemoryStatistics { get; }
+
+        public RuntimeLogCaptureStatistics LogCaptureStatistics { get; }
 
         public int EventCapacity { get; }
 
@@ -75,7 +79,8 @@ namespace UnityCoreLab.Diagnostics
             RuntimeDiagnosticContext context,
             DateTime generatedAtUtc,
             double capturedAtSeconds,
-            ManagedMemoryMonitor memoryMonitor = null)
+            ManagedMemoryMonitor memoryMonitor = null,
+            RuntimeLogInbox logInbox = null)
         {
             if (events == null)
             {
@@ -114,6 +119,9 @@ namespace UnityCoreLab.Diagnostics
                 hitchDetector.SuppressedReportCount,
                 hitchDetector.WorstFrameMilliseconds,
                 new ManagedMemoryStatistics(memoryMonitor),
+                logInbox != null
+                    ? logInbox.GetStatistics()
+                    : default,
                 events.Capacity,
                 events.OverwrittenCount,
                 eventSnapshot);

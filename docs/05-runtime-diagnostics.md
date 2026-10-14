@@ -123,3 +123,43 @@ References:
   https://docs.unity3d.com/2022.3/Documentation/Manual/ProfilerMemory.html
 - Unity 2022.3 `ProfilerRecorder` API:
   https://docs.unity3d.com/2022.3/Documentation/ScriptReference/Unity.Profiling.ProfilerRecorder.html
+
+## 05.4 Bounded, thread-safe Unity log capture
+
+Unity's `Application.logMessageReceivedThreaded` callback can run on the main
+thread or a worker thread, and multiple callbacks can run in parallel. The
+callback therefore must not write directly to the non-thread-safe diagnostic
+history or call main-thread-only Unity APIs.
+
+`RuntimeLogInbox` is the boundary between those execution contexts:
+
+1. the threaded callback maps `LogType` to `DiagnosticSeverity`;
+2. message and stack-trace lengths are capped before retention;
+3. a short lock protects a fixed array with 64 pending slots;
+4. when full, the oldest pending entry is replaced and `DroppedCount` rises;
+5. `Update` drains at most eight entries per frame into the main diagnostic
+   buffer.
+
+The per-frame drain limit is intentional backpressure. Draining an arbitrary
+log flood in one frame could create another hitch while attempting to diagnose
+the original problem. A diagnostic JSON report includes received, drained,
+pending, dropped, and truncated counts, so missing log detail remains visible
+rather than silently disappearing.
+
+Entries receive their diagnostic timestamp when the main thread drains them,
+not at the exact worker-thread callback instant. This baseline chooses a simple
+thread-safe handoff over cross-thread clock correlation. A production system
+that needs precise ordering can store a platform monotonic timestamp in the
+inbox and convert it during report analysis.
+
+The warning and error buttons use Unity's real logging path. The 80-message
+burst writes directly to the inbox so queue overflow and bounded draining can
+be studied without flooding the Editor Console. Log content can contain player
+names, tokens, file paths, or backend payloads; production upload must apply a
+redaction and consent policy before transport. This stage only retains bounded
+local data and performs no upload.
+
+Reference:
+
+- Unity `Application.logMessageReceivedThreaded`:
+  https://docs.unity3d.com/2022.3/Documentation/ScriptReference/Application-logMessageReceivedThreaded.html

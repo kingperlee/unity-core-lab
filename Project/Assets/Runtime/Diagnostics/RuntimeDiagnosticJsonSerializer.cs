@@ -171,6 +171,53 @@ namespace UnityCoreLab.Diagnostics
                 indented);
             AppendObjectEnd(builder, 1, indented);
 
+            RuntimeLogCaptureStatistics logCapture =
+                report.LogCaptureStatistics;
+            AppendPropertyPrefix(
+                builder,
+                "logCaptureStatistics",
+                1,
+                indented);
+            AppendObjectStart(builder);
+            AppendNumberProperty(
+                builder,
+                "capacity",
+                logCapture.Capacity,
+                2,
+                indented,
+                first: true);
+            AppendNumberProperty(
+                builder,
+                "pendingCount",
+                logCapture.PendingCount,
+                2,
+                indented);
+            AppendNumberProperty(
+                builder,
+                "receivedCount",
+                logCapture.ReceivedCount,
+                2,
+                indented);
+            AppendNumberProperty(
+                builder,
+                "drainedCount",
+                logCapture.DrainedCount,
+                2,
+                indented);
+            AppendNumberProperty(
+                builder,
+                "droppedCount",
+                logCapture.DroppedCount,
+                2,
+                indented);
+            AppendNumberProperty(
+                builder,
+                "truncatedCount",
+                logCapture.TruncatedCount,
+                2,
+                indented);
+            AppendObjectEnd(builder, 1, indented);
+
             AppendPropertyPrefix(builder, "eventStorage", 1, indented);
             AppendObjectStart(builder);
             AppendNumberProperty(

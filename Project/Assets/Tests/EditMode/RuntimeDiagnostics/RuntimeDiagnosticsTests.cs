@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.Threading;
 using NUnit.Framework;
 using UnityCoreLab.Diagnostics;
 
@@ -338,6 +339,130 @@ namespace UnityCoreLab.Tests.EditMode.RuntimeDiagnostics
                 monitor.Observe(
                     new ManagedMemorySample(0, 0, 0, 0),
                     1d));
+        }
+
+        [Test]
+        public void LogInbox_BoundsTextDropsOldestAndTracksDrain()
+        {
+            var inbox = new RuntimeLogInbox(
+                capacity: 3,
+                maximumMessageCharacters: 5,
+                maximumStackTraceCharacters: 4);
+            inbox.Enqueue(DiagnosticSeverity.Info, "One", string.Empty);
+            inbox.Enqueue(DiagnosticSeverity.Info, "Two", string.Empty);
+            inbox.Enqueue(
+                DiagnosticSeverity.Warning,
+                "1234567",
+                "abcdef");
+            inbox.Enqueue(DiagnosticSeverity.Error, "Four", string.Empty);
+
+            RuntimeLogCaptureStatistics before = inbox.GetStatistics();
+            Assert.That(before.ReceivedCount, Is.EqualTo(4));
+            Assert.That(before.PendingCount, Is.EqualTo(3));
+            Assert.That(before.DroppedCount, Is.EqualTo(1));
+            Assert.That(before.TruncatedCount, Is.EqualTo(1));
+
+            Assert.That(inbox.TryDequeue(out RuntimeLogEntry first), Is.True);
+            Assert.That(first.Message, Is.EqualTo("Two"));
+            Assert.That(inbox.TryDequeue(out RuntimeLogEntry second), Is.True);
+            Assert.That(second.Message, Is.EqualTo("12345"));
+            Assert.That(second.StackTrace, Is.EqualTo("abcd"));
+            Assert.That(inbox.TryDequeue(out RuntimeLogEntry third), Is.True);
+            Assert.That(third.Message, Is.EqualTo("Four"));
+            Assert.That(inbox.TryDequeue(out _), Is.False);
+
+            RuntimeLogCaptureStatistics after = inbox.GetStatistics();
+            Assert.That(after.PendingCount, Is.Zero);
+            Assert.That(after.DrainedCount, Is.EqualTo(3));
+        }
+
+        [Test]
+        public void LogInbox_AcceptsParallelProducersWithinFixedCapacity()
+        {
+            const int ThreadCount = 4;
+            const int MessagesPerThread = 100;
+            const int Capacity = 32;
+            var inbox = new RuntimeLogInbox(Capacity, 64, 0);
+            var threads = new Thread[ThreadCount];
+
+            for (int threadIndex = 0;
+                 threadIndex < ThreadCount;
+                 threadIndex++)
+            {
+                int capturedIndex = threadIndex;
+                threads[threadIndex] = new Thread(() =>
+                {
+                    for (int messageIndex = 0;
+                         messageIndex < MessagesPerThread;
+                         messageIndex++)
+                    {
+                        inbox.Enqueue(
+                            DiagnosticSeverity.Info,
+                            $"T{capturedIndex}:{messageIndex}",
+                            string.Empty);
+                    }
+                });
+                threads[threadIndex].Start();
+            }
+
+            foreach (Thread thread in threads)
+            {
+                thread.Join();
+            }
+
+            RuntimeLogCaptureStatistics statistics = inbox.GetStatistics();
+            Assert.That(
+                statistics.ReceivedCount,
+                Is.EqualTo(ThreadCount * MessagesPerThread));
+            Assert.That(statistics.PendingCount, Is.EqualTo(Capacity));
+            Assert.That(
+                statistics.DroppedCount,
+                Is.EqualTo(
+                    ThreadCount * MessagesPerThread - Capacity));
+        }
+
+        [Test]
+        public void Report_SerializesLogBackpressureStatistics()
+        {
+            var events = new RuntimeDiagnosticBuffer(2);
+            var hitchDetector = new FrameHitchDetector(
+                events,
+                30d,
+                100d,
+                0d);
+            var inbox = new RuntimeLogInbox(2, 32, 32);
+            inbox.Enqueue(DiagnosticSeverity.Info, "One", string.Empty);
+            inbox.Enqueue(DiagnosticSeverity.Warning, "Two", "Stack");
+            inbox.Enqueue(DiagnosticSeverity.Error, "Three", string.Empty);
+            inbox.TryDequeue(out _);
+            var context = new RuntimeDiagnosticContext(
+                "session-1",
+                "Unity Core Lab",
+                "1.0",
+                "Editor",
+                "Test Device",
+                "Test OS",
+                "Test GPU");
+            RuntimeDiagnosticReport report = RuntimeDiagnosticReport.Capture(
+                events,
+                hitchDetector,
+                context,
+                new DateTime(2026, 10, 14, 12, 0, 0, DateTimeKind.Utc),
+                2d,
+                memoryMonitor: null,
+                logInbox: inbox);
+            string json = RuntimeDiagnosticJsonSerializer.Serialize(report);
+
+            Assert.That(report.LogCaptureStatistics.ReceivedCount,
+                Is.EqualTo(3));
+            Assert.That(report.LogCaptureStatistics.DroppedCount,
+                Is.EqualTo(1));
+            Assert.That(report.LogCaptureStatistics.DrainedCount,
+                Is.EqualTo(1));
+            Assert.That(report.LogCaptureStatistics.PendingCount,
+                Is.EqualTo(1));
+            StringAssert.Contains("\"logCaptureStatistics\":", json);
+            StringAssert.Contains("\"droppedCount\": 1", json);
         }
     }
 }

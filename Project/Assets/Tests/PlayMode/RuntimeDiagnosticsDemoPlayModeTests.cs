@@ -39,12 +39,22 @@ namespace UnityCoreLab.Tests.PlayMode
                         100 * 1024 * 1024),
                     2d),
                 Is.True);
+            demo.LogInbox.Enqueue(
+                DiagnosticSeverity.Warning,
+                "Synthetic Unity warning.",
+                "Synthetic stack.");
+            Assert.That(demo.DrainLogsForTesting(3d, 1), Is.EqualTo(1));
+            Assert.That(
+                demo.Events[demo.Events.Count - 1].Category,
+                Is.EqualTo("UnityLog"));
 
             RuntimeDiagnosticReport report = demo.CaptureReport();
             string json = demo.BuildReportJson();
-            Assert.That(report.EventCount, Is.EqualTo(3));
+            Assert.That(report.EventCount, Is.EqualTo(4));
             Assert.That(report.Context.SessionId, Is.Not.EqualTo("Unknown"));
             Assert.That(report.MemoryStatistics.AllocationSpikeCount,
+                Is.EqualTo(1));
+            Assert.That(report.LogCaptureStatistics.DrainedCount,
                 Is.EqualTo(1));
             StringAssert.Contains("\"schemaVersion\": 1", json);
             StringAssert.Contains("\"events\":", json);
@@ -55,6 +65,7 @@ namespace UnityCoreLab.Tests.PlayMode
             Assert.That(demo.Events.Count, Is.Zero);
             Assert.That(demo.HitchDetector.DetectedHitchCount, Is.Zero);
             Assert.That(demo.MemoryMonitor.ObservedSampleCount, Is.Zero);
+            Assert.That(demo.LogInbox.GetStatistics().ReceivedCount, Is.Zero);
             Assert.That(demo.LatestReportJson, Is.Null);
 
             Object.Destroy(root);

@@ -131,6 +131,10 @@ modal pages introduced earlier. An engine-independent queue provides one active
 owner, stable priority ordering, duplicate-ID coalescing, awaitable confirmation
 results, and owner-completed blocking operations. A passive uGUI host provides
 the full-screen input barrier while policy remains covered by EditMode tests.
+Stage 06.6 adds a fixed-height virtualized list. Its engine-independent layout
+model converts scroll offset and viewport height into a buffered half-open data
+range. The uGUI sample keeps a bounded row pool while switching between 100,
+1,000, and 10,000 logical items, then rebinds those rows as the window moves.
 
 - Runtime code: `Project/Assets/Runtime/UiNavigation`
 - Presentation runtime: `Project/Assets/Runtime/UiPresentation`
@@ -140,13 +144,14 @@ the full-screen input barrier while policy remains covered by EditMode tests.
 - Presenter scene: `Project/Assets/Samples/UiPresentation/UiPresenterDemo.unity`
 - Dialog policy runtime: `Project/Assets/Runtime/UiDialogs`
 - Dialog scene: `Project/Assets/Samples/UiDialogs/UiDialogDemo.unity`
+- Virtualization runtime: `Project/Assets/Runtime/UiVirtualization`
+- Virtualized list scene: `Project/Assets/Samples/UiVirtualization/UiVirtualizedListDemo.unity`
 - EditMode tests: `Project/Assets/Tests/EditMode/UiNavigation`
 - PlayMode tests: `Project/Assets/Tests/PlayMode`
 - Design note: `docs/06-ui-navigation-and-lifecycle.md`
 
 ## Roadmap
 
-- Virtualized lists
 - Mobile-device rendering case studies
 - Persistent incident handoff and real Android/iOS crash-SDK adapters
 

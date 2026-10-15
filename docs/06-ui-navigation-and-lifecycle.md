@@ -239,3 +239,46 @@ Open `Project/Assets/Samples/UiDialogs/UiDialogDemo.unity` and enter Play Mode:
    shared completion task;
 5. build the priority scenario and advance it: the active gate remains first,
    followed by Critical, High, and Normal pending requests.
+
+## 06.6 Fixed-height list virtualization
+
+A conventional ScrollRect that creates one GameObject for every record makes
+view count, layout work, and hierarchy traversal grow with the dataset. The
+06.6 sample represents the full scrollable height but creates rows only for the
+visible window plus a small buffer. Moving the window repositions and rebinds
+the same row objects to different data indices.
+
+`FixedHeightVirtualList` contains no Unity engine references. Given item extent,
+viewport extent, item count, buffer size, and scroll offset, it calculates:
+
+- the total content extent and maximum legal scroll offset;
+- a buffered half-open range `[start, end)` clamped to the dataset;
+- the maximum number of row views needed for that viewport;
+- aligned offsets for jumping an item to the start, center, or end.
+
+The extra view in the capacity calculation covers the case where the viewport
+starts partway through one row and ends partway through another. Buffer rows are
+added on both sides so a small scroll can reuse an already-bound row before the
+next refresh. At the first and last item, the calculated range is clipped rather
+than producing an invalid data index.
+
+`UiVirtualizedListDemo` keeps the ScrollRect content transform at the complete
+logical height, but its children are a bounded pool of `VirtualizedListRow`
+objects. Each refresh maps pool slot zero to the range start, positions rows by
+their logical index, and calls `Bind` only when a row changes ownership. Changing
+the dataset from 1,000 to 10,000 items therefore changes content height without
+increasing the row-object count. Shrinking the dataset clamps an old scroll
+offset before calculating the new range.
+
+Open
+`Project/Assets/Samples/UiVirtualization/UiVirtualizedListDemo.unity` and enter
+Play Mode:
+
+1. switch among 100, 1,000, and 10,000 items and compare logical items with
+   created row objects;
+2. drag or use the mouse wheel and observe the range and binding count change
+   while the created row count remains stable;
+3. jump to the middle and bottom and verify that displayed indices match the
+   target window;
+4. switch from a large dataset to 100 items near the bottom and observe the
+   scroll offset clamp to the new valid extent.

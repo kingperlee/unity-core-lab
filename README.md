@@ -2,7 +2,7 @@
 
 Practical Unity samples covering asynchronous workflows, state machines, asset lifecycle, performance optimization, and runtime diagnostics.
 
-This repository is a personal Unity engineering portfolio for technical demonstration and discussion. It focuses on reusable engineering concepts rather than production-ready frameworks.
+This repository is a personal Unity engineering portfolio for technical demonstration and discussion. It presents reusable engineering concepts through focused, independently verifiable samples.
 
 ## Environment
 
@@ -126,6 +126,11 @@ Stage 06.4 separates presentation decisions from uGUI. A generic, engine-free
 Presenter maps asynchronous data into immutable Loading, Content, Empty, and
 Error snapshots, cancels superseded requests, ignores stale completion, and
 detaches from its passive View on disposal.
+Stage 06.5 isolates short-lived dialog request coordination from the routed
+modal pages introduced earlier. An engine-independent queue provides one active
+owner, stable priority ordering, duplicate-ID coalescing, awaitable confirmation
+results, and owner-completed blocking operations. A passive uGUI host provides
+the full-screen input barrier while policy remains covered by EditMode tests.
 
 - Runtime code: `Project/Assets/Runtime/UiNavigation`
 - Presentation runtime: `Project/Assets/Runtime/UiPresentation`
@@ -133,13 +138,15 @@ detaches from its passive View on disposal.
 - View lifecycle scene: `Project/Assets/Samples/UiNavigation/UiViewLifecycleDemo.unity`
 - Prefab factory scene: `Project/Assets/Samples/UiNavigation/UiPrefabFactoryDemo.unity`
 - Presenter scene: `Project/Assets/Samples/UiPresentation/UiPresenterDemo.unity`
+- Dialog policy runtime: `Project/Assets/Runtime/UiDialogs`
+- Dialog scene: `Project/Assets/Samples/UiDialogs/UiDialogDemo.unity`
 - EditMode tests: `Project/Assets/Tests/EditMode/UiNavigation`
 - PlayMode tests: `Project/Assets/Tests/PlayMode`
 - Design note: `docs/06-ui-navigation-and-lifecycle.md`
 
 ## Roadmap
 
-- Modal policy and virtualized lists
+- Virtualized lists
 - Mobile-device rendering case studies
 - Persistent incident handoff and real Android/iOS crash-SDK adapters
 

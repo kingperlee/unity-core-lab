@@ -184,3 +184,58 @@ source. Exercise these paths:
 4. recreate the Presenter and observe that a new owner starts at revision 1;
 5. use the View's own refresh button to verify that it emits intent without
    loading data itself.
+
+## 06.5 Awaitable dialog requests and queue policy
+
+The routed modal pages in 06.1 through 06.3 are navigation destinations with
+stack and View lifecycle behavior. A dialog in this stage is instead a
+short-lived Notice, Confirmation, or Blocking request whose caller waits for a
+result. If every screen instantiates its own confirmation prefab, projects
+quickly accumulate duplicate dialogs, overlapping input barriers, unresolved
+callbacks, and unclear completion ownership. 06.5 isolates that request policy
+in the engine-independent `UiDialogQueue` and keeps uGUI inside a passive host.
+
+The queue maintains exactly one active request and a pending list. Pending
+requests are ordered by priority, while requests with the same priority retain
+FIFO order. A newly queued Critical request does not tear down or preempt the
+current owner; priority only selects which pending request becomes active
+next. This avoids silently dismissing a decision that the caller is already
+awaiting.
+
+Request IDs are ownership keys. Showing the same ID twice with the same kind
+returns the existing completion task instead of creating a second visual. A
+duplicate ID with a different kind is rejected because one identity cannot
+simultaneously mean both a notice and a confirmation. Once the original entry
+finishes, that ID may be used again for a new request.
+
+Three explicit dialog kinds demonstrate different completion ownership:
+
+- Notice exposes one acknowledgement path;
+- Confirmation exposes Confirm and Cancel and can be consumed as
+  `await dialogQueue.ShowConfirmAsync(...)`;
+- Blocking exposes no user-owned close button and must be completed by the
+  operation owner through `Complete`.
+
+`DialogDemoView` owns only rendering and user intent. Its full-screen
+`CanvasGroup` sets `blocksRaycasts` while a dialog is active, preventing the
+underlying uGUI from receiving pointer input. It does not select the next
+request, resolve duplicates, or complete a blocking operation. Disposing the
+queue detaches the View and resolves all active and pending ownership with
+the explicit `Dismissed` result so no awaiting caller is left hanging.
+
+`UiDialogQueue` is responsible only for request coordination and result
+completion. View construction, route integration, and application-specific
+presentation remain independent concerns.
+
+Open `Project/Assets/Samples/UiDialogs/UiDialogDemo.unity` and enter Play Mode:
+
+1. click the underlying uGUI button with no dialog, then show a Notice and
+   verify that the same button no longer receives pointer input;
+2. open a Confirmation and choose Confirm or Cancel; the status displays the
+   awaited Boolean result;
+3. show a Blocking operation and verify that its hidden buttons cannot dismiss
+   it, then use `Complete blocking operation` as the operation owner;
+4. show the duplicate ID twice and observe one View presentation plus one
+   shared completion task;
+5. build the priority scenario and advance it: the active gate remains first,
+   followed by Critical, High, and Normal pending requests.
